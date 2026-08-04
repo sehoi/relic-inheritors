@@ -1,0 +1,8 @@
+# CI는 Linux에서 돌고 로컬은 Windows다. 저장소 내부는 LF로 통일한다.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ogg binary
+*.mp3 binary
+*.wav binary
