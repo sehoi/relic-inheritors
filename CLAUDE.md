@@ -22,8 +22,10 @@ npm run dev        # 로컬 실행 → http://localhost:5173
 npm run verify     # typecheck + lint + test + build  ← 커밋 전 필수
 npm run test       # Vitest (core 유닛 테스트)
 npm run smoke      # Playwright 부팅 스모크 + 스크린샷
-npm run sim        # 헤드리스 전투 시뮬레이터 (밸런스 확인)
+npm run sim        # 헤드리스 전투 시뮬레이터 (밸런스 확인) — M3에서 생성 예정, 아직 없음
 ```
+
+> 스모크를 처음 돌리기 전에 한 번: `npx playwright install chromium`
 
 ## 절대 규칙
 

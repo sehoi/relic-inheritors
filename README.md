@@ -17,6 +17,8 @@ npm install
 npm run dev      # http://localhost:5173
 ```
 
+스모크 테스트를 돌리려면 브라우저를 한 번 받아둡니다: `npx playwright install chromium`
+
 ## 개발 명령
 
 | 명령 | 내용 |
@@ -25,7 +27,7 @@ npm run dev      # http://localhost:5173
 | `npm run verify` | typecheck + lint + test + build — **커밋 전 필수** |
 | `npm run test` | Vitest (core 유닛 테스트) |
 | `npm run smoke` | Playwright 부팅 스모크 + 스크린샷 |
-| `npm run sim` | 헤드리스 전투 시뮬레이터 (밸런스 확인) |
+| `npm run sim` | 헤드리스 전투 시뮬레이터 (밸런스 확인) — **M3 예정, 아직 없음** |
 | `npm run build` | 프로덕션 빌드 |
 
 ## 문서
@@ -51,5 +53,6 @@ npm run dev      # http://localhost:5173
 
 ## 현재 상태
 
-**M0 (부트스트랩) 진행 전.** 설계 문서와 자동화 골격만 존재한다.
-`docs/BACKLOG.md`의 T-001부터 시작한다.
+**M0 (부트스트랩) 완료.** 프로젝트가 뜨고, `npm run verify`와 CI가 초록이며,
+Boot → Title → Overworld 씬 전환이 스모크로 검증된다.
+다음은 `docs/BACKLOG.md`의 T-007a (에셋 색인).
