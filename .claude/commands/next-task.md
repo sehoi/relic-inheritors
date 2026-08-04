@@ -56,6 +56,12 @@ description: 백로그 태스크 하나를 구현 → 검증 → PR → 머지�
 
 ## 8. 머지
 - `gh pr checks` 로 CI가 초록인지 확인한다. 빨간 PR은 절대 머지하지 않는다.
+- **PowerShell에는 `&&` 가 없다.** 명령을 줄바꿈으로 나열하면 앞이 실패해도 뒤가 실행된다 — 이건 게이트가 아니다. 반드시 종료 코드를 검사한다:
+  ```powershell
+  gh pr checks <번호> --watch --interval 20
+  if ($?) { gh pr merge <번호> --squash --delete-branch } else { Write-Output "CI 실패 - 머지 중단" }
+  ```
+  (2026-08-04에 이 실수로 빨간 PR #4가 머지되어 main이 깨졌다.)
 - CI 실패 시 원인을 고친다. 2회 연속 실패하면 PR을 draft로 내리고 백로그에 `- [!]` 표시 후 종료.
 - 초록이면 `gh pr merge --squash --delete-branch`
 
