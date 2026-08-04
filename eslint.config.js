@@ -5,7 +5,9 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', 'playwright-report', 'test-results', 'coverage'],
+    // assets/ 는 제3자 벤더 팩이 들어오는 곳이다 (ADR-007). 우리 코드가 아니므로 린트하지 않는다.
+    // 특히 Tiled 의 타일셋 정의 파일이 `.tsx` 확장자를 쓰는데, 이를 TypeScript JSX 로 파싱하려다 깨진다.
+    ignores: ['dist', 'node_modules', 'playwright-report', 'test-results', 'coverage', 'assets'],
   },
 
   js.configs.recommended,

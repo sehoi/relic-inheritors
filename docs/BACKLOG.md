@@ -22,14 +22,12 @@
 ## M1 — 탐색
 
 - [x] **T-007a** 에셋 색인 체계 구축 — `assets/index.json` 스키마·검증, `CREDITS.md` 대조, 미등재 경로 참조 시 테스트 실패 (ADR-006). 현재 색인은 비어 있음
-- [ ] **에셋 필요: 16x16 탑다운 타일셋 + 4방향 캐릭터 스프라이트** ⬅ 사람이 처리
-  - 루프는 그림을 그릴 수 없다. CC0 팩을 `assets/` 에 넣고 `assets/README.md` 절차대로 등재하면 된다
-  - 추천: Kenney(kenney.nl)의 Tiny Dungeon + Tiny Town — 일괄 CC0라 항목별 라이선스 확인이 불필요하고, 16x16 탑다운이며 타일과 캐릭터가 한 팩에 있다
-  - 주의: 플랫포머(횡스크롤) 타일셋은 투영이 달라 쓸 수 없다. LPC Universal Spritesheet은 CC-BY-SA/GPL이라 허용 목록 밖이다
-  - 없어도 M1은 단색 도형 플레이스홀더로 계속 진행된다 (막히지 않는다)
+- [x] **에셋 조달** — Kenney Tiny Town + Tiny Dungeon (CC0-1.0) 벤더 팩으로 등재 완료. `tiles-town`, `tiles-dungeon` 키로 로드 가능
 - [ ] **T-007b** 실제 타일셋 렌더링 — gid → 타일셋 좌표 매핑
-  - DoD: `.tmj` 의 `tilesets` 배열(firstgid + 이미지)을 파싱하고, `paintTilemap` 의 색상 매핑을 스프라이트 렌더링으로 교체
-  - **선행 조건: 위의 "에셋 필요" 항목이 해결되어야 한다.** 에셋이 없으면 이 태스크는 건너뛴다
+  - DoD: `.tmj` 의 `tilesets` 배열(firstgid + 이미지)을 파싱하고, `paintTilemap` 의 색상 매핑을 스프라이트 렌더링으로 교체. `ruin-entrance.tmj` 가 `tiles-dungeon` 시트를 쓰도록 갱신
+  - 선행 조건 해결됨 (위 에셋 조달 완료)
+- [ ] **에셋 필요: 4방향 캐릭터 스프라이트** ⬅ 사람이 처리
+  - Tiny Town/Dungeon 에 캐릭터 타일이 있으나 4방향 걷기 프레임은 아니다. T-008 이동은 도형 플레이스홀더로 진행 가능하며, 걷기 애니메이션 단계에서 필요해진다
 - [x] **T-007** 타일맵 로딩 (Tiled `.tmj`) + 렌더링 — `core/world/tilemap.ts` 파서·검증, 플레이스홀더 렌더러, `ruin-entrance.tmj` (30x16)
 - [ ] **T-008** 그리드 4방향 이동 + 충돌 판정 (`core/world`에 순수 로직, 테스트 포함)
 - [ ] **T-009** 카메라 추적 + 맵 경계 클램프
