@@ -52,25 +52,31 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
     timeout: 10_000,
   });
 
-  // ── 이동과 충돌 (T-008) ──────────────────────────────────────────────────
-  // 스폰은 (6,8). 위쪽 열은 y=1 까지 비어 있고 y=0 은 외곽 벽이다.
-  // 8번 누르면 7칸 올라가고 마지막 한 번은 벽에 막혀야 한다.
-  await expect(page.locator('body')).toHaveAttribute('data-player', '6,8');
+  // ── 이동·충돌·카메라 (T-008, T-009) ──────────────────────────────────────
+  // 맵은 60x40 타일(960x640px)이고 화면은 480x270px 이다.
+  // 스폰 (8,6) 은 맵 좌상단에 가까워 카메라가 경계에 붙어 있어야 한다.
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,6');
+  await expect(page.locator('body')).toHaveAttribute('data-camera', '0,0');
 
+  // 입구 홀은 x=16 까지다. 8번 오른쪽으로 가면 벽에 닿는다.
   for (let i = 0; i < 8; i += 1) {
-    await stepKey(page, 'ArrowUp');
+    await stepKey(page, 'ArrowRight');
   }
 
-  await expect(page.locator('body')).toHaveAttribute('data-player', '6,1');
-  await expect(page.locator('body')).toHaveAttribute('data-facing', 'up');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '16,6');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'right');
+
+  // 플레이어가 화면 중앙(240px)을 넘어섰으므로 카메라가 따라 움직인다.
+  // 세로는 여전히 위쪽 경계에 걸려 0 이다 — 축마다 독립적으로 판단한다.
+  await expect(page.locator('body')).toHaveAttribute('data-camera', '24,0');
 
   // 막힌 방향으로 더 눌러도 제자리이되, 방향은 바뀐다.
-  await stepKey(page, 'ArrowUp');
-  await expect(page.locator('body')).toHaveAttribute('data-player', '6,1');
-
   await stepKey(page, 'ArrowRight');
-  await expect(page.locator('body')).toHaveAttribute('data-player', '7,1');
-  await expect(page.locator('body')).toHaveAttribute('data-facing', 'right');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '16,6');
+
+  await stepKey(page, 'ArrowDown');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '16,7');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'down');
 
   await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
 

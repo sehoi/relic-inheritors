@@ -22,3 +22,8 @@ export function markWalker(walker: Walker): void {
   document.body.dataset['player'] = `${walker.position.x},${walker.position.y}`;
   document.body.dataset['facing'] = walker.facing;
 }
+
+/** 카메라 좌상단(스크롤). 맵 경계 클램프가 실제로 걸리는지 스모크가 이걸로 판정한다. */
+export function markCamera(scroll: { x: number; y: number }): void {
+  document.body.dataset['camera'] = `${Math.round(scroll.x)},${Math.round(scroll.y)}`;
+}
