@@ -29,6 +29,11 @@ export function markCamera(scroll: { x: number; y: number }): void {
   document.body.dataset['camera'] = `${Math.round(scroll.x)},${Math.round(scroll.y)}`;
 }
 
+/** 지금 어느 맵에 있는가. 층 이동이 실제로 일어났는지 스모크가 이걸로 판정한다. */
+export function markMap(mapId: string): void {
+  document.body.dataset['map'] = mapId;
+}
+
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
 export function markDialogue(session: DialogueSession | undefined): void {
   document.body.dataset['dialogue'] =

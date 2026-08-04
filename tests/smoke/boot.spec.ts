@@ -103,6 +103,32 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   await stepKey(page, 'ArrowRight');
   await expect(page.locator('body')).toHaveAttribute('data-player', '16,5');
 
+  // ── 층 이동 (T-011) ──────────────────────────────────────────────────────
+  // 입구 홀의 계단은 (11,3). 밟으면 지하 1층 (5,6) 으로 내려간다.
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance');
+
+  for (let i = 0; i < 5; i += 1) await stepKey(page, 'ArrowLeft');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '11,5');
+
+  await stepKey(page, 'ArrowUp');
+  await stepKey(page, 'ArrowUp');
+
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-depths', {
+    timeout: 10_000,
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-player', '5,6');
+  await page.screenshot({ path: `${SHOT_DIR}/depths.png` });
+
+  // 도착 지점은 계단 옆이다. 계단 위였다면 여기서 무한히 오갔을 것이다.
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-depths');
+
+  // 올라가는 계단을 밟으면 입구 홀의 계단 옆으로 돌아온다.
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance', {
+    timeout: 10_000,
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-player', '11,4');
+
   await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);

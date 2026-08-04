@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseTiledMap } from '../../src/core/world/tilemap.js';
-import { isSolid } from '../../src/core/world/tilemap.js';
+import { isSolid, parseTiledMap, type TileMap } from '../../src/core/world/tilemap.js';
 import { spawnWalker } from '../../src/core/world/movement.js';
+import { validatePortalNetwork } from '../../src/core/world/portal.js';
 import {
   TEXT_BOX_LAYOUT,
   openDialogue,
@@ -11,17 +11,53 @@ import {
 } from '../../src/core/dialogue/index.js';
 import { DIALOGUE_SCRIPTS, dialogueScript } from '../../src/data/dialogue.js';
 import { NPCS_BY_MAP } from '../../src/data/npcs.js';
+import { PORTALS_BY_MAP } from '../../src/data/portals.js';
+import { MAP_FILES, MAP_IDS, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
 /**
  * 콘텐츠 정합성.
  *
  * 코드가 맞아도 데이터가 어긋나면 게임은 깨진다 — 벽 속에 선 NPC, 존재하지 않는 대화 ID,
- * 상자 밖으로 넘치는 대사. 루프가 콘텐츠를 늘릴수록 이런 실수가 늘어나므로 여기서 막는다.
+ * 상자 밖으로 넘치는 대사, 무한히 오가는 계단.
+ * 루프가 콘텐츠를 늘릴수록 이런 실수가 늘어나므로 여기서 막는다.
  */
 
-const map = parseTiledMap(
-  JSON.parse(readFileSync(join(process.cwd(), 'src/data/maps/ruin-entrance.tmj'), 'utf8')),
+const maps = new Map<MapId, TileMap>(
+  MAP_IDS.map((id) => [
+    id,
+    parseTiledMap(JSON.parse(readFileSync(join(process.cwd(), MAP_FILES[id]), 'utf8'))),
+  ]),
 );
+
+const mapOf = (id: MapId): TileMap => {
+  const map = maps.get(id);
+  if (map === undefined) throw new Error(`맵을 읽지 못했습니다: ${id}`);
+  return map;
+};
+
+describe('맵', () => {
+  it('모든 맵이 파싱된다', () => {
+    expect(maps.size).toBe(MAP_IDS.length);
+  });
+
+  it('시작 맵이 목록에 있다', () => {
+    expect(MAP_IDS).toContain(STARTING_MAP);
+  });
+
+  it.each([...MAP_IDS])('%s: 스폰 지점이 유효하다', (id) => {
+    expect(() => spawnWalker(mapOf(id))).not.toThrow();
+  });
+
+  it.each([...MAP_IDS])('%s: 화면보다 크다 (카메라 추적이 의미를 가지려면)', (id) => {
+    const map = mapOf(id);
+    expect(map.width * map.tileWidth).toBeGreaterThan(480);
+    expect(map.height * map.tileHeight).toBeGreaterThan(270);
+  });
+
+  it.each([...MAP_IDS])('%s: 색인된 타일셋만 참조한다', (id) => {
+    expect(mapOf(id).tilesets.map((t) => t.assetKey)).toEqual(['tiles-dungeon']);
+  });
+});
 
 describe('대화 스크립트', () => {
   it('모든 스크립트가 스키마를 통과한다', () => {
@@ -64,58 +100,104 @@ describe('대화 스크립트', () => {
 });
 
 describe('NPC 배치', () => {
-  const npcs = NPCS_BY_MAP['ruin-entrance'] ?? [];
-
-  it('배치가 비어 있지 않다', () => {
-    expect(npcs.length).toBeGreaterThan(0);
-  });
-
-  it('벽 속에 선 NPC 가 없다', () => {
-    const stuck = npcs
+  it.each([...MAP_IDS])('%s: 벽 속에 선 NPC 가 없다', (id) => {
+    const map = mapOf(id);
+    const stuck = (NPCS_BY_MAP[id] ?? [])
       .filter((npc) => isSolid(map, npc.position.x, npc.position.y))
       .map((npc) => `${npc.id} (${npc.position.x}, ${npc.position.y})`);
 
     expect(stuck, `벽 속에 있습니다:\n${stuck.join('\n')}`).toEqual([]);
   });
 
-  it('같은 칸에 겹친 NPC 가 없다', () => {
+  it.each([...MAP_IDS])('%s: 겹치거나 스폰을 막는 NPC 가 없다', (id) => {
+    const npcs = NPCS_BY_MAP[id] ?? [];
+    const spawn = spawnWalker(mapOf(id)).position;
+
     const seen = new Set<string>();
-    const overlapping = npcs
-      .filter((npc) => {
-        const key = `${npc.position.x},${npc.position.y}`;
-        if (seen.has(key)) return true;
-        seen.add(key);
-        return false;
-      })
-      .map((npc) => npc.id);
+    const problems: string[] = [];
 
-    expect(overlapping).toEqual([]);
+    for (const npc of npcs) {
+      const key = `${npc.position.x},${npc.position.y}`;
+      if (seen.has(key)) problems.push(`${npc.id}: 다른 NPC 와 같은 칸 (${key})`);
+      seen.add(key);
+      if (npc.position.x === spawn.x && npc.position.y === spawn.y) {
+        problems.push(`${npc.id}: 스폰 칸에 서 있어 시작하자마자 갇힌다`);
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
   });
 
-  it('플레이어 스폰 지점을 막지 않는다', () => {
-    const spawn = spawnWalker(map).position;
-    const blocker = npcs.find(
-      (npc) => npc.position.x === spawn.x && npc.position.y === spawn.y,
-    );
-    expect(blocker?.id, '스폰 칸에 NPC 가 서 있으면 시작하자마자 갇힌다').toBeUndefined();
+  it('모든 NPC 가 존재하는 대화와 유효한 타일을 가리킨다', () => {
+    const problems: string[] = [];
+
+    for (const id of MAP_IDS) {
+      const tileCount = mapOf(id).tilesets[0]?.tileCount ?? 0;
+      for (const npc of NPCS_BY_MAP[id] ?? []) {
+        if (DIALOGUE_SCRIPTS[npc.dialogueId] === undefined) {
+          problems.push(`${id}/${npc.id}: 없는 대화 "${npc.dialogueId}"`);
+        }
+        if (npc.tile < 0 || npc.tile >= tileCount) {
+          problems.push(`${id}/${npc.id}: 타일 ${npc.tile} 이 범위 밖`);
+        }
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+});
+
+describe('포탈 배치', () => {
+  it('포탈망이 유효하다 (무한 왕복·끊어진 연결 없음)', () => {
+    expect(() => validatePortalNetwork(PORTALS_BY_MAP)).not.toThrow();
   });
 
-  it('모든 NPC 가 존재하는 대화를 가리킨다', () => {
-    const dangling = npcs
-      .filter((npc) => DIALOGUE_SCRIPTS[npc.dialogueId] === undefined)
-      .map((npc) => `${npc.id} → ${npc.dialogueId}`);
+  it('맵이 서로 오갈 수 있다 (한 방향만 뚫린 계단이 없다)', () => {
+    const problems: string[] = [];
 
-    expect(dangling, `없는 대화를 가리킵니다:\n${dangling.join('\n')}`).toEqual([]);
+    for (const [mapId, portals] of Object.entries(PORTALS_BY_MAP)) {
+      for (const portal of portals) {
+        const backLinks = PORTALS_BY_MAP[portal.target.mapId as MapId] ?? [];
+        const hasReturn = backLinks.some((back) => back.target.mapId === mapId);
+        if (!hasReturn) {
+          problems.push(`${mapId}/${portal.id} → ${portal.target.mapId}: 돌아올 길이 없다`);
+        }
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
   });
 
-  it('타일 번호가 타일셋 범위 안이다', () => {
-    const tileset = map.tilesets[0];
-    expect(tileset).toBeDefined();
+  it.each([...MAP_IDS])('%s: 포탈과 도착 지점이 벽 속이 아니다', (id) => {
+    const problems: string[] = [];
 
-    const outOfRange = npcs
-      .filter((npc) => npc.tile < 0 || npc.tile >= (tileset?.tileCount ?? 0))
-      .map((npc) => `${npc.id} → ${npc.tile}`);
+    for (const portal of PORTALS_BY_MAP[id] ?? []) {
+      if (isSolid(mapOf(id), portal.position.x, portal.position.y)) {
+        problems.push(`${portal.id}: 포탈이 벽 속 (${portal.position.x}, ${portal.position.y})`);
+      }
 
-    expect(outOfRange).toEqual([]);
+      const targetMap = mapOf(portal.target.mapId as MapId);
+      const { x, y } = portal.target.position;
+      if (isSolid(targetMap, x, y)) {
+        problems.push(`${portal.id}: 도착 지점이 벽 속 (${portal.target.mapId} ${x}, ${y})`);
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it('포탈 칸에 NPC 가 서 있지 않다 (계단을 막으면 진행이 끊긴다)', () => {
+    const problems: string[] = [];
+
+    for (const id of MAP_IDS) {
+      for (const portal of PORTALS_BY_MAP[id] ?? []) {
+        const blocker = (NPCS_BY_MAP[id] ?? []).find(
+          (npc) => npc.position.x === portal.position.x && npc.position.y === portal.position.y,
+        );
+        if (blocker !== undefined) problems.push(`${id}: ${blocker.id} 가 ${portal.id} 를 막는다`);
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
   });
 });
