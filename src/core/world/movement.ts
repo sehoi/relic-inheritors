@@ -39,6 +39,12 @@ export interface StepResult {
 }
 
 /**
+ * 지형 외의 이유로 막힌 칸을 알려주는 판정식 (NPC, 밀 수 없는 물체 등).
+ * 지형과 분리한 이유는 `core/world/interaction.ts` 참조.
+ */
+export type BlockedPredicate = (x: number, y: number) => boolean;
+
+/**
  * 한 칸 이동을 시도한다.
  *
  * **막혀 있어도 방향은 바뀐다.** 고전 JRPG의 관습이고, 실용적인 이유도 있다 —
@@ -47,7 +53,12 @@ export interface StepResult {
  *
  * 맵 밖은 `isSolid` 가 막힌 것으로 보므로 경계 검사를 따로 하지 않는다.
  */
-export function stepWalker(map: TileMap, walker: Walker, direction: Direction): StepResult {
+export function stepWalker(
+  map: TileMap,
+  walker: Walker,
+  direction: Direction,
+  blocked?: BlockedPredicate,
+): StepResult {
   const turned: Walker = { position: walker.position, facing: direction };
 
   const vector = VECTORS[direction];
@@ -56,7 +67,7 @@ export function stepWalker(map: TileMap, walker: Walker, direction: Direction): 
     y: walker.position.y + vector.y,
   };
 
-  if (isSolid(map, target.x, target.y)) {
+  if (isSolid(map, target.x, target.y) || blocked?.(target.x, target.y) === true) {
     return { walker: turned, moved: false };
   }
 
