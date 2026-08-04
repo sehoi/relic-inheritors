@@ -27,8 +27,10 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   // Boot는 즉시 통과하므로 title이 관측 지점이다.
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
 
+  // 파일명에 태스크 ID를 넣지 않는다. 이터레이션마다 새 파일이 쌓이면 저장소가 부풀고,
+  // "지금 화면"이 어느 것인지 알 수 없게 된다. 고정 이름으로 덮어쓰면 git diff 가 변화를 보여준다.
   await mkdir(SHOT_DIR, { recursive: true });
-  await page.screenshot({ path: `${SHOT_DIR}/M0-title.png` });
+  await page.screenshot({ path: `${SHOT_DIR}/title.png` });
 
   // 키 입력이 게임에 전달되는지까지 확인한다.
   await page.locator('#game canvas').click();
@@ -38,7 +40,7 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
     timeout: 10_000,
   });
 
-  await page.screenshot({ path: `${SHOT_DIR}/M0-overworld.png` });
+  await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });
