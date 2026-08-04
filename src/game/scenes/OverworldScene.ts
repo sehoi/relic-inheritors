@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 import rawRuinEntrance from '../../data/maps/ruin-entrance.tmj?raw';
 import { isSolid, parseTiledMap, type TileMap } from '../../core/world/tilemap.js';
-import { paintTilemapPlaceholder } from '../world/paintTilemap.js';
+import { assetCatalog } from '../assets/catalog.js';
+import { renderTilemapLayer } from '../world/renderTilemap.js';
 import { markScene } from '../sceneMarker.js';
 
 /**
  * 탐색 씬.
  *
- * T-007 범위는 "맵을 읽고 그린다" 까지다.
+ * T-007b 범위는 "맵을 읽고 실제 타일셋으로 그린다" 까지다.
  * 이동·충돌 반응은 T-008, 카메라 추적은 T-009 에서 붙인다.
  * 지금은 맵 전체가 화면에 들어오므로 카메라 없이도 확인이 된다.
  */
@@ -27,18 +28,8 @@ export class OverworldScene extends Phaser.Scene {
     const offsetY = Math.floor((this.scale.height - pixelHeight) / 2);
 
     const world = this.add.container(offsetX, offsetY);
-
-    const terrain = this.add.graphics();
-    paintTilemapPlaceholder(terrain, map, 'ground');
-    world.add(terrain);
-
+    world.add(renderTilemapLayer(this, map, assetCatalog(), 'ground'));
     world.add(this.createPlayerPlaceholder(map));
-
-    this.add.text(4, 4, 'RUIN ENTRANCE  ·  30x16', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      color: '#6f7b8a',
-    });
   }
 
   /** 스폰 지점의 플레이어 표식. T-008에서 실제로 움직이는 객체로 대체된다. */
@@ -52,12 +43,14 @@ export class OverworldScene extends Phaser.Scene {
       throw new Error(`스폰 지점 (${spawnX}, ${spawnY}) 이 막혀 있습니다.`);
     }
 
+    // 모래 바닥과 대비되는 색을 쓴다. 스크린샷으로 진행을 확인하는 이상,
+    // 배경에 묻히는 표식은 없는 것과 같다.
     return this.add.rectangle(
       spawnX * map.tileWidth + map.tileWidth / 2,
       spawnY * map.tileHeight + map.tileHeight / 2,
       map.tileWidth - 4,
       map.tileHeight - 4,
-      0xc8a15a,
+      0xb0304a,
     );
   }
 }

@@ -1,15 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parseAssetIndex } from '../../src/core/assets/index.js';
 import {
   COLLISION_LAYER,
   TileMapError,
   findLayer,
   isInBounds,
   isSolid,
+  localTileIndex,
   parseTiledMap,
   requireLayer,
   tileAt,
+  tilesetForGid,
 } from '../../src/core/world/tilemap.js';
 
 /** 4x3 짜리 최소 맵. ground 는 전부 1, collision 은 (1,1) 한 칸만 막혀 있다. */
@@ -21,6 +24,7 @@ const minimalMap = (overrides: Record<string, unknown> = {}): unknown => ({
   height: 3,
   tilewidth: 16,
   tileheight: 16,
+  tilesets: [{ firstgid: 1, name: 'tiles-test', columns: 4, tilecount: 8 }],
   layers: [
     {
       type: 'tilelayer',
@@ -144,6 +148,93 @@ describe('parseTiledMap', () => {
   });
 });
 
+describe('타일셋 (T-007b)', () => {
+  it('name 을 에셋 색인 키로 읽는다 (파일 경로가 아니다)', () => {
+    const map = parseTiledMap(minimalMap());
+    expect(map.tilesets).toEqual([
+      { firstGid: 1, assetKey: 'tiles-test', columns: 4, tileCount: 8 },
+    ]);
+  });
+
+  it('타일셋이 없거나 비면 거부한다', () => {
+    expect(problemsOf(minimalMap({ tilesets: [] }))).toMatch(/비어 있습니다/);
+    expect(problemsOf(minimalMap({ tilesets: undefined }))).toMatch(/배열/);
+  });
+
+  it('외부 타일셋(.tsx) 참조를 거부하며 해결 방법을 알려준다', () => {
+    const external = minimalMap({ tilesets: [{ firstgid: 1, source: 'dungeon.tsx' }] });
+    expect(problemsOf(external)).toMatch(/Embed tileset/);
+  });
+
+  it('필수 필드를 검사한다', () => {
+    expect(problemsOf(minimalMap({ tilesets: [{ firstgid: 1, name: '', columns: 4, tilecount: 8 }] }))).toMatch(
+      /name/,
+    );
+    expect(
+      problemsOf(minimalMap({ tilesets: [{ firstgid: 0, name: 'x', columns: 4, tilecount: 8 }] })),
+    ).toMatch(/firstgid/);
+    expect(
+      problemsOf(minimalMap({ tilesets: [{ firstgid: 1, name: 'x', columns: 0, tilecount: 8 }] })),
+    ).toMatch(/columns/);
+  });
+
+  it('firstgid 가 오름차순이 아니면 거부한다', () => {
+    const unsorted = minimalMap({
+      tilesets: [
+        { firstgid: 10, name: 'a', columns: 4, tilecount: 8 },
+        { firstgid: 5, name: 'b', columns: 4, tilecount: 8 },
+      ],
+    });
+    expect(problemsOf(unsorted)).toMatch(/커야 합니다/);
+  });
+
+  it('어떤 타일셋에도 속하지 않는 gid 를 거부한다 (화면에 구멍이 뚫리기 전에 잡는다)', () => {
+    // tilecount 8, firstgid 1 => 유효 범위 1~8. 데이터에 99 를 심는다.
+    const outOfRange = minimalMap({
+      layers: [
+        {
+          type: 'tilelayer',
+          name: 'ground',
+          width: 4,
+          height: 3,
+          data: [99, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        },
+        {
+          type: 'tilelayer',
+          name: COLLISION_LAYER,
+          width: 4,
+          height: 3,
+          data: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+        },
+      ],
+    });
+    expect(problemsOf(outOfRange)).toMatch(/속하지 않는 gid: 99/);
+  });
+
+  it('gid 를 타일셋과 프레임 번호로 바꾼다', () => {
+    const map = parseTiledMap(
+      minimalMap({
+        tilesets: [
+          { firstgid: 1, name: 'a', columns: 4, tilecount: 8 },
+          { firstgid: 9, name: 'b', columns: 4, tilecount: 8 },
+        ],
+      }),
+    );
+
+    const first = tilesetForGid(map, 1);
+    expect(first?.assetKey).toBe('a');
+    expect(localTileIndex(first!, 1)).toBe(0);
+
+    const second = tilesetForGid(map, 12);
+    expect(second?.assetKey).toBe('b');
+    expect(localTileIndex(second!, 12)).toBe(3);
+
+    // 빈 칸과 범위 밖
+    expect(tilesetForGid(map, 0)).toBeUndefined();
+    expect(tilesetForGid(map, 999)).toBeUndefined();
+  });
+});
+
 describe('레이어 조회', () => {
   const map = parseTiledMap(minimalMap());
 
@@ -220,9 +311,27 @@ describe('src/data/maps/ruin-entrance.tmj (실제 맵)', () => {
     expect(isSolid(map, spawnX as number, spawnY as number)).toBe(false);
   });
 
+  it('색인된 타일셋 키를 참조한다', () => {
+    expect(map.tilesets.map((tileset) => tileset.assetKey)).toEqual(['tiles-dungeon']);
+  });
+
+  it('참조하는 타일셋 키가 assets/index.json 에 실제로 등재되어 있다', () => {
+    // 맵과 에셋 색인 사이의 연결을 여기서 닫는다.
+    // 이게 없으면 키 오타가 런타임까지 살아남아 "왜 안 그려지지"가 된다.
+    const index = parseAssetIndex(
+      JSON.parse(readFileSync(join(process.cwd(), 'assets/index.json'), 'utf8')),
+    );
+    const registered = new Set(index.entries.map((entry) => entry.key));
+    const missing = map.tilesets
+      .map((tileset) => tileset.assetKey)
+      .filter((key) => !registered.has(key));
+
+    expect(missing, `맵이 참조하는데 색인에 없는 타일셋 키: ${missing.join(', ')}`).toEqual([]);
+  });
+
   it('ground 와 collision 이 서로 모순되지 않는다 (벽 타일 = 막힌 칸)', () => {
     const ground = requireLayer(map, 'ground');
-    const WALL_GID = 2;
+    const WALL_GID = 41; // Kenney Tiny Dungeon 의 회색 벽돌 (로컬 40 + firstgid 1)
 
     const mismatches: string[] = [];
     for (let y = 0; y < map.height; y += 1) {

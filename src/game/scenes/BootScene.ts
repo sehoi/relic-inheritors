@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
-import assetIndexJson from '../../../assets/index.json';
-import { createAssetCatalog, parseAssetIndex } from '../../core/assets/index.js';
+import { assetCatalog } from '../assets/catalog.js';
 import { queueAssets } from '../assets/queueAssets.js';
 import { markScene } from '../sceneMarker.js';
 
@@ -17,8 +16,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    const catalog = createAssetCatalog(parseAssetIndex(assetIndexJson));
-    queueAssets(this.load, catalog);
+    queueAssets(this.load, assetCatalog());
   }
 
   create(): void {

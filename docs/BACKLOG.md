@@ -23,9 +23,7 @@
 
 - [x] **T-007a** 에셋 색인 체계 구축 — `assets/index.json` 스키마·검증, `CREDITS.md` 대조, 미등재 경로 참조 시 테스트 실패 (ADR-006). 현재 색인은 비어 있음
 - [x] **에셋 조달** — Kenney Tiny Town + Tiny Dungeon (CC0-1.0) 벤더 팩으로 등재 완료. `tiles-town`, `tiles-dungeon` 키로 로드 가능
-- [ ] **T-007b** 실제 타일셋 렌더링 — gid → 타일셋 좌표 매핑
-  - DoD: `.tmj` 의 `tilesets` 배열(firstgid + 이미지)을 파싱하고, `paintTilemap` 의 색상 매핑을 스프라이트 렌더링으로 교체. `ruin-entrance.tmj` 가 `tiles-dungeon` 시트를 쓰도록 갱신
-  - 선행 조건 해결됨 (위 에셋 조달 완료)
+- [x] **T-007b** 실제 타일셋 렌더링 — `tilesets` 파싱, gid → 프레임 매핑, RenderTexture 렌더러. 맵이 Kenney Tiny Dungeon 시트를 쓴다
 - [ ] **에셋 필요: 4방향 캐릭터 스프라이트** ⬅ 사람이 처리
   - Tiny Town/Dungeon 에 캐릭터 타일이 있으나 4방향 걷기 프레임은 아니다. T-008 이동은 도형 플레이스홀더로 진행 가능하며, 걷기 애니메이션 단계에서 필요해진다
 - [x] **T-007** 타일맵 로딩 (Tiled `.tmj`) + 렌더링 — `core/world/tilemap.ts` 파서·검증, 플레이스홀더 렌더러, `ruin-entrance.tmj` (30x16)

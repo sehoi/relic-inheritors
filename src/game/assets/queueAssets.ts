@@ -14,11 +14,9 @@ export function queueAssets(loader: Phaser.Loader.LoaderPlugin, catalog: AssetCa
         loader.image(entry.key, entry.path);
         break;
 
-      // 타일셋도 Phaser 입장에서는 이미지다. frame 은 타일맵 생성 시점에 쓰인다.
+      // 타일셋은 낱장 타일을 프레임으로 꺼내 써야 하므로 스프라이트시트로 싣는다.
+      // 통짜 이미지로 실으면 gid → 타일 좌표 매핑을 할 수 없다.
       case 'tileset':
-        loader.image(entry.key, entry.path);
-        break;
-
       case 'spritesheet':
         loader.spritesheet(entry.key, entry.path, {
           frameWidth: entry.frame.width,
