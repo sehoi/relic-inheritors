@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AssetIndexError,
   createAssetCatalog,
+  packContaining,
   parseAssetIndex,
   type AssetIndex,
 } from '../../src/core/assets/index.js';
@@ -36,7 +37,11 @@ const problemsOf = (raw: unknown): string => {
 
 describe('parseAssetIndex', () => {
   it('빈 색인은 유효하다 (에셋이 없는 것과 색인이 깨진 것은 다른 상태다)', () => {
-    expect(parseAssetIndex({ version: 1, entries: [] })).toEqual({ version: 1, entries: [] });
+    expect(parseAssetIndex({ version: 1, entries: [] })).toEqual({
+      version: 1,
+      packs: [],
+      entries: [],
+    });
   });
 
   it('정상 항목을 통과시킨다', () => {
@@ -122,6 +127,91 @@ describe('parseAssetIndex', () => {
       expect(error).toBeInstanceOf(AssetIndexError);
       expect((error as AssetIndexError).problems.length).toBeGreaterThan(3);
     }
+  });
+});
+
+describe('벤더 팩 (ADR-007)', () => {
+  const pack = {
+    dir: 'assets/kenney_tiny-town',
+    source: { name: 'Kenney Tiny Town', url: 'https://kenney.nl/assets/tiny-town', license: 'CC0-1.0' },
+  };
+  const packedEntry = {
+    key: 'tiles-town',
+    path: 'assets/kenney_tiny-town/Tilemap/tilemap_packed.png',
+    kind: 'tileset',
+    usage: '마을 타일맵',
+    frame: { width: 16, height: 16 },
+  };
+  const withPack = (...entries: unknown[]): unknown => ({ version: 1, packs: [pack], entries });
+
+  it('팩 안의 항목은 source 를 생략하고 팩의 출처를 물려받는다', () => {
+    const parsed = parseAssetIndex(withPack(packedEntry));
+    expect(parsed.entries[0]?.source).toEqual(pack.source);
+  });
+
+  it('중복 기재를 강제하지 않는 이유 — 팩과 항목이 어긋날 여지를 없앤다', () => {
+    // source 를 직접 적는 것도 여전히 허용된다 (팩 밖 항목과 규칙을 통일하기 위해).
+    const explicit = { ...packedEntry, source: pack.source };
+    expect(parseAssetIndex(withPack(explicit)).entries[0]?.source).toEqual(pack.source);
+  });
+
+  it('팩 밖의 항목이 source 를 생략하면 거부한다', () => {
+    const outside = { ...packedEntry, path: 'assets/loose/tile.png' };
+    expect(problemsOf(withPack(outside))).toMatch(/source 가 없습니다/);
+  });
+
+  it('팩도 출처와 허용 라이선스를 요구받는다 (보증이 유지되는 지점)', () => {
+    const noSource = { version: 1, packs: [{ dir: 'assets/foo' }], entries: [] };
+    expect(problemsOf(noSource)).toMatch(/source/);
+
+    const badLicense = {
+      version: 1,
+      packs: [{ ...pack, source: { ...pack.source, license: 'GPL-3.0' } }],
+      entries: [],
+    };
+    expect(problemsOf(badLicense)).toMatch(/허용되지 않은 라이선스/);
+  });
+
+  it('assets 전체를 팩으로 선언할 수 없다 (고아 검사 무력화 방지)', () => {
+    // 슬래시 유무 양쪽 다 막고, 형식 오류가 아니라 근본 이유를 알려줘야 한다.
+    expect(problemsOf({ version: 1, packs: [{ ...pack, dir: 'assets' }], entries: [] })).toMatch(
+      /고아 검사/,
+    );
+    expect(problemsOf({ version: 1, packs: [{ ...pack, dir: 'assets/' }], entries: [] })).toMatch(
+      /고아 검사/,
+    );
+  });
+
+  it('경로 형식을 강제한다', () => {
+    expect(problemsOf({ version: 1, packs: [{ ...pack, dir: 'vendor/x' }], entries: [] })).toMatch(
+      /assets\//,
+    );
+    expect(
+      problemsOf({ version: 1, packs: [{ ...pack, dir: 'assets/x/' }], entries: [] }),
+    ).toMatch(/끝에/);
+    expect(
+      problemsOf({ version: 1, packs: [{ ...pack, dir: 'assets/../etc' }], entries: [] }),
+    ).toMatch(/\.\./);
+  });
+
+  it('중복·중첩 디렉터리를 거부한다 (소유가 모호해진다)', () => {
+    expect(problemsOf({ version: 1, packs: [pack, pack], entries: [] })).toMatch(/중복/);
+    expect(
+      problemsOf({
+        version: 1,
+        packs: [pack, { ...pack, dir: 'assets/kenney_tiny-town/Tiles' }],
+        entries: [],
+      }),
+    ).toMatch(/중첩/);
+  });
+
+  it('packContaining 은 경계를 정확히 본다', () => {
+    const { packs } = parseAssetIndex(withPack());
+    expect(packContaining(packs, 'assets/kenney_tiny-town/Tiles/a.png')?.dir).toBe(pack.dir);
+    // 접두사가 같다고 같은 팩이 아니다.
+    expect(packContaining(packs, 'assets/kenney_tiny-town-extra/a.png')).toBeUndefined();
+    // 디렉터리 자기 자신은 파일이 아니다.
+    expect(packContaining(packs, 'assets/kenney_tiny-town')).toBeUndefined();
   });
 });
 

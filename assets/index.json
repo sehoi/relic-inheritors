@@ -1,4 +1,37 @@
 {
   "version": 1,
-  "entries": []
+  "packs": [
+    {
+      "dir": "assets/kenney_tiny-town",
+      "source": {
+        "name": "Kenney Tiny Town",
+        "url": "https://kenney.nl/assets/tiny-town",
+        "license": "CC0-1.0"
+      }
+    },
+    {
+      "dir": "assets/kenney_tiny-dungeon",
+      "source": {
+        "name": "Kenney Tiny Dungeon",
+        "url": "https://kenney.nl/assets/tiny-dungeon",
+        "license": "CC0-1.0"
+      }
+    }
+  ],
+  "entries": [
+    {
+      "key": "tiles-town",
+      "path": "assets/kenney_tiny-town/Tilemap/tilemap_packed.png",
+      "kind": "tileset",
+      "usage": "거점 마을·야외 타일맵. 여백 없는 시트라 frame 만으로 자를 수 있다",
+      "frame": { "width": 16, "height": 16 }
+    },
+    {
+      "key": "tiles-dungeon",
+      "path": "assets/kenney_tiny-dungeon/Tilemap/tilemap_packed.png",
+      "kind": "tileset",
+      "usage": "유적 던전 타일맵. 여백 없는 시트라 frame 만으로 자를 수 있다",
+      "frame": { "width": 16, "height": 16 }
+    }
+  ]
 }

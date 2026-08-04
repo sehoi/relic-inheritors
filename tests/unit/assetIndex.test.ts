@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAssetIndex } from '../../src/core/assets/index.js';
+import { packContaining, parseAssetIndex } from '../../src/core/assets/index.js';
 
 /**
  * 저장소 정합성 테스트 (ADR-006).
@@ -53,18 +53,40 @@ describe('assets/index.json', () => {
     const orphans = walk(ASSETS_DIR)
       .map(toRepoPath)
       .filter((path) => !NON_ASSET_FILES.has(path.slice('assets/'.length)))
-      .filter((path) => !registered.has(path));
+      .filter((path) => !registered.has(path))
+      // 벤더 팩 안의 파일은 팩 선언이 출처를 보증한다 (ADR-007).
+      .filter((path) => packContaining(index.packs, path) === undefined);
 
     expect(
       orphans,
       `파일은 있는데 assets/index.json 에 등재되지 않았습니다:\n${orphans.join('\n')}\n` +
-        `등재하거나 삭제하세요 (ADR-006).`,
+        `entries 에 등재하거나, 제3자 팩이면 packs 에 디렉터리를 선언하세요 (ADR-006/007).`,
     ).toEqual([]);
   });
 
+  it('선언된 벤더 팩 디렉터리가 실제로 존재한다', () => {
+    const missing = index.packs
+      .filter((pack) => !existsSync(join(ROOT, pack.dir)))
+      .map((pack) => pack.dir);
+
+    expect(missing, `packs 에 선언됐는데 디렉터리가 없습니다:\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('빈 벤더 팩을 선언해두지 않는다 (규칙만 남고 내용이 사라진 상태)', () => {
+    const empty = index.packs
+      .filter((pack) => walk(join(ROOT, pack.dir)).length === 0)
+      .map((pack) => pack.dir);
+
+    expect(empty, `선언됐지만 비어 있는 팩:\n${empty.join('\n')}`).toEqual([]);
+  });
+
   it('모든 출처가 CREDITS.md 에 기록되어 있다', () => {
-    const unrecorded = index.entries
-      .map((entry) => entry.source.name)
+    const names = [
+      ...index.packs.map((pack) => pack.source.name),
+      ...index.entries.map((entry) => entry.source.name),
+    ];
+
+    const unrecorded = names
       .filter((name, position, all) => all.indexOf(name) === position)
       .filter((name) => !credits.includes(name));
 
