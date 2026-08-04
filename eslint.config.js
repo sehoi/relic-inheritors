@@ -16,6 +16,19 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },
+    rules: {
+      // `_` 접두사는 "의도적으로 안 쓴다"는 표시로 인정한다.
+      // ignoreRestSiblings 는 구조분해로 특정 키를 덜어내는 관용구를 위해 필요하다.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
   },
 
   // ── ADR-001: core 레이어는 순수 TypeScript다 ──────────────────────────────
