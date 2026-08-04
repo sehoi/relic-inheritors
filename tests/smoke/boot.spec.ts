@@ -1,7 +1,19 @@
 import { mkdir } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const SHOT_DIR = 'docs/screenshots';
+
+/**
+ * 한 칸 이동을 유발한다.
+ *
+ * 게임은 매 프레임 키의 눌림 상태를 확인한다(눌러서 계속 걷는 조작을 위해).
+ * `press()` 의 기본 동작은 눌렀다 즉시 떼는 것이라 프레임 사이에 끼어 무시될 수 있다.
+ * 몇 프레임 동안 눌러둔 뒤, 이동 트윈이 끝나기를 기다린다.
+ */
+async function stepKey(page: Page, key: string): Promise<void> {
+  await page.keyboard.press(key, { delay: 60 });
+  await page.waitForTimeout(160);
+}
 
 /**
  * 자율 루프의 "눈" 역할을 하는 테스트.
@@ -39,6 +51,26 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
     timeout: 10_000,
   });
+
+  // ── 이동과 충돌 (T-008) ──────────────────────────────────────────────────
+  // 스폰은 (6,8). 위쪽 열은 y=1 까지 비어 있고 y=0 은 외곽 벽이다.
+  // 8번 누르면 7칸 올라가고 마지막 한 번은 벽에 막혀야 한다.
+  await expect(page.locator('body')).toHaveAttribute('data-player', '6,8');
+
+  for (let i = 0; i < 8; i += 1) {
+    await stepKey(page, 'ArrowUp');
+  }
+
+  await expect(page.locator('body')).toHaveAttribute('data-player', '6,1');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'up');
+
+  // 막힌 방향으로 더 눌러도 제자리이되, 방향은 바뀐다.
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '6,1');
+
+  await stepKey(page, 'ArrowRight');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '7,1');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'right');
 
   await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
 

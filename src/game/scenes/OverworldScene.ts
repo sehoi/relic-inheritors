@@ -1,18 +1,38 @@
 import Phaser from 'phaser';
 import rawRuinEntrance from '../../data/maps/ruin-entrance.tmj?raw';
-import { isSolid, parseTiledMap, type TileMap } from '../../core/world/tilemap.js';
+import { parseTiledMap, type TileMap } from '../../core/world/tilemap.js';
+import {
+  directionVector,
+  spawnWalker,
+  stepWalker,
+  type Direction,
+  type Walker,
+} from '../../core/world/movement.js';
 import { assetCatalog } from '../assets/catalog.js';
 import { renderTilemapLayer } from '../world/renderTilemap.js';
-import { markScene } from '../sceneMarker.js';
+import { markScene, markWalker } from '../domState.js';
+
+/** 한 칸 이동에 걸리는 시간. 이 동안 입력은 무시된다. */
+const STEP_DURATION = 110;
 
 /**
  * 탐색 씬.
  *
- * T-007b 범위는 "맵을 읽고 실제 타일셋으로 그린다" 까지다.
- * 이동·충돌 반응은 T-008, 카메라 추적은 T-009 에서 붙인다.
- * 지금은 맵 전체가 화면에 들어오므로 카메라 없이도 확인이 된다.
+ * 이동 판정은 전부 `core/world/movement` 가 한다. 여기서는 입력을 방향으로 바꾸고,
+ * 결과를 화면으로 옮기는 일만 한다.
+ *
+ * 카메라 추적은 T-009. 지금은 맵 전체가 화면에 들어오므로 카메라 없이도 확인이 된다.
  */
 export class OverworldScene extends Phaser.Scene {
+  private map!: TileMap;
+  private walker!: Walker;
+  private playerView!: Phaser.GameObjects.Container;
+  private facingPip!: Phaser.GameObjects.Rectangle;
+  private keys!: Record<Direction, Phaser.Input.Keyboard.Key[]>;
+
+  /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
+  private stepping = false;
+
   constructor() {
     super('overworld');
   }
@@ -20,37 +40,112 @@ export class OverworldScene extends Phaser.Scene {
   create(): void {
     markScene('overworld');
 
-    const map = parseTiledMap(JSON.parse(rawRuinEntrance));
+    this.map = parseTiledMap(JSON.parse(rawRuinEntrance));
+    this.stepping = false;
 
-    const pixelWidth = map.width * map.tileWidth;
-    const pixelHeight = map.height * map.tileHeight;
-    const offsetX = Math.floor((this.scale.width - pixelWidth) / 2);
-    const offsetY = Math.floor((this.scale.height - pixelHeight) / 2);
+    const pixelWidth = this.map.width * this.map.tileWidth;
+    const pixelHeight = this.map.height * this.map.tileHeight;
+    const world = this.add.container(
+      Math.floor((this.scale.width - pixelWidth) / 2),
+      Math.floor((this.scale.height - pixelHeight) / 2),
+    );
 
-    const world = this.add.container(offsetX, offsetY);
-    world.add(renderTilemapLayer(this, map, assetCatalog(), 'ground'));
-    world.add(this.createPlayerPlaceholder(map));
+    world.add(renderTilemapLayer(this, this.map, assetCatalog(), 'ground'));
+
+    this.walker = spawnWalker(this.map);
+    this.playerView = this.createPlayerView();
+    world.add(this.playerView);
+
+    this.bindKeys();
+    this.syncPlayerView();
   }
 
-  /** 스폰 지점의 플레이어 표식. T-008에서 실제로 움직이는 객체로 대체된다. */
-  private createPlayerPlaceholder(map: TileMap): Phaser.GameObjects.Rectangle {
-    const spawnX = typeof map.properties['spawnX'] === 'number' ? map.properties['spawnX'] : 1;
-    const spawnY = typeof map.properties['spawnY'] === 'number' ? map.properties['spawnY'] : 1;
+  override update(): void {
+    if (this.stepping) return;
 
-    if (isSolid(map, spawnX, spawnY)) {
-      // 맵 데이터가 잘못된 것이므로 조용히 옆 칸으로 밀어내지 않는다.
-      // 유닛 테스트가 같은 조건을 검사하지만, 런타임에서도 즉시 드러나게 둔다.
-      throw new Error(`스폰 지점 (${spawnX}, ${spawnY}) 이 막혀 있습니다.`);
+    const direction = this.pressedDirection();
+    if (direction === undefined) return;
+
+    const { walker, moved } = stepWalker(this.map, this.walker, direction);
+    this.walker = walker;
+    markWalker(walker);
+    this.updateFacingPip();
+
+    if (!moved) return;
+
+    this.stepping = true;
+    this.tweens.add({
+      targets: this.playerView,
+      x: this.pixelX(walker),
+      y: this.pixelY(walker),
+      duration: STEP_DURATION,
+      onComplete: () => {
+        this.stepping = false;
+      },
+    });
+  }
+
+  // ── 입력 ────────────────────────────────────────────────────────────────
+
+  private bindKeys(): void {
+    const keyboard = this.input.keyboard;
+    if (keyboard === null) {
+      // 키보드가 없는 환경(터치 전용 등)에서도 씬 자체는 떠야 한다.
+      this.keys = { up: [], down: [], left: [], right: [] };
+      return;
     }
 
+    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
+    this.keys = {
+      up: [key('UP'), key('W')],
+      down: [key('DOWN'), key('S')],
+      left: [key('LEFT'), key('A')],
+      right: [key('RIGHT'), key('D')],
+    };
+  }
+
+  /**
+   * 눌린 방향 하나. 대각선 입력은 지원하지 않으므로 먼저 발견한 것을 쓴다.
+   * 순서를 고정해 두면 두 키를 동시에 눌러도 결과가 항상 같다.
+   */
+  private pressedDirection(): Direction | undefined {
+    for (const direction of ['up', 'down', 'left', 'right'] as const) {
+      if (this.keys[direction].some((k) => k.isDown)) return direction;
+    }
+    return undefined;
+  }
+
+  // ── 표현 ────────────────────────────────────────────────────────────────
+
+  private createPlayerView(): Phaser.GameObjects.Container {
+    const size = this.map.tileWidth;
+
     // 모래 바닥과 대비되는 색을 쓴다. 스크린샷으로 진행을 확인하는 이상,
-    // 배경에 묻히는 표식은 없는 것과 같다.
-    return this.add.rectangle(
-      spawnX * map.tileWidth + map.tileWidth / 2,
-      spawnY * map.tileHeight + map.tileHeight / 2,
-      map.tileWidth - 4,
-      map.tileHeight - 4,
-      0xb0304a,
-    );
+    // 배경에 묻히는 표식은 없는 것과 같다. 실제 캐릭터 스프라이트가 들어오면 교체된다.
+    const body = this.add.rectangle(0, 0, size - 4, size - 4, 0xb0304a);
+    this.facingPip = this.add.rectangle(0, 0, 4, 4, 0xf2e6c9);
+
+    return this.add.container(0, 0, [body, this.facingPip]);
+  }
+
+  private syncPlayerView(): void {
+    this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
+    markWalker(this.walker);
+    this.updateFacingPip();
+  }
+
+  /** 바라보는 방향을 눈에 보이게 한다 — 이게 없으면 제자리 회전이 아무 반응 없는 것처럼 보인다. */
+  private updateFacingPip(): void {
+    const vector = directionVector(this.walker.facing);
+    const distance = this.map.tileWidth / 2 - 3;
+    this.facingPip.setPosition(vector.x * distance, vector.y * distance);
+  }
+
+  private pixelX(walker: Walker): number {
+    return walker.position.x * this.map.tileWidth + this.map.tileWidth / 2;
+  }
+
+  private pixelY(walker: Walker): number {
+    return walker.position.y * this.map.tileHeight + this.map.tileHeight / 2;
   }
 }

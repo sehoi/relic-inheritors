@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { markScene } from '../sceneMarker.js';
+import { markScene } from '../domState.js';
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
