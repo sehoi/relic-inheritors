@@ -288,9 +288,15 @@ describe('src/data/maps/ruin-entrance.tmj (실제 맵)', () => {
   const map = parseTiledMap(raw);
 
   it('파싱된다', () => {
-    expect(map.width).toBe(30);
-    expect(map.height).toBe(16);
     expect(map.tileWidth).toBe(16);
+    expect(map.tileHeight).toBe(16);
+  });
+
+  it('화면보다 크다 (카메라 추적이 의미를 가지려면)', () => {
+    // 크기 자체를 못 박으면 맵이 자랄 때마다 테스트를 고쳐야 한다.
+    // 중요한 건 숫자가 아니라 "화면에 다 안 들어온다"는 성질이다.
+    expect(map.width * map.tileWidth).toBeGreaterThan(480);
+    expect(map.height * map.tileHeight).toBeGreaterThan(270);
   });
 
   it('외곽이 전부 막혀 있다 (플레이어가 맵 밖으로 나갈 수 없다)', () => {

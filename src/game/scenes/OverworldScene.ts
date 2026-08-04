@@ -8,9 +8,10 @@ import {
   type Direction,
   type Walker,
 } from '../../core/world/movement.js';
+import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
 import { assetCatalog } from '../assets/catalog.js';
 import { renderTilemapLayer } from '../world/renderTilemap.js';
-import { markScene, markWalker } from '../domState.js';
+import { markCamera, markScene, markWalker } from '../domState.js';
 
 /** 한 칸 이동에 걸리는 시간. 이 동안 입력은 무시된다. */
 const STEP_DURATION = 110;
@@ -18,10 +19,8 @@ const STEP_DURATION = 110;
 /**
  * 탐색 씬.
  *
- * 이동 판정은 전부 `core/world/movement` 가 한다. 여기서는 입력을 방향으로 바꾸고,
- * 결과를 화면으로 옮기는 일만 한다.
- *
- * 카메라 추적은 T-009. 지금은 맵 전체가 화면에 들어오므로 카메라 없이도 확인이 된다.
+ * 이동 판정은 `core/world/movement`, 카메라 위치는 `core/world/camera` 가 한다.
+ * 여기서는 입력을 방향으로 바꾸고, 결과를 화면으로 옮기는 일만 한다.
  */
 export class OverworldScene extends Phaser.Scene {
   private map!: TileMap;
@@ -43,13 +42,8 @@ export class OverworldScene extends Phaser.Scene {
     this.map = parseTiledMap(JSON.parse(rawRuinEntrance));
     this.stepping = false;
 
-    const pixelWidth = this.map.width * this.map.tileWidth;
-    const pixelHeight = this.map.height * this.map.tileHeight;
-    const world = this.add.container(
-      Math.floor((this.scale.width - pixelWidth) / 2),
-      Math.floor((this.scale.height - pixelHeight) / 2),
-    );
-
+    // 월드는 원점에 둔다. 화면에 무엇이 보이는지는 전적으로 카메라가 정한다.
+    const world = this.add.container(0, 0);
     world.add(renderTilemapLayer(this, this.map, assetCatalog(), 'ground'));
 
     this.walker = spawnWalker(this.map);
@@ -57,10 +51,16 @@ export class OverworldScene extends Phaser.Scene {
     world.add(this.playerView);
 
     this.bindKeys();
-    this.syncPlayerView();
+    this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
+    markWalker(this.walker);
+    this.updateFacingPip();
+    this.followCamera();
   }
 
   override update(): void {
+    // 이동 트윈이 도는 동안에도 카메라는 따라가야 한다. 입력 잠금과 무관하게 매 프레임 갱신한다.
+    this.followCamera();
+
     if (this.stepping) return;
 
     const direction = this.pressedDirection();
@@ -83,6 +83,19 @@ export class OverworldScene extends Phaser.Scene {
         this.stepping = false;
       },
     });
+  }
+
+  // ── 카메라 ──────────────────────────────────────────────────────────────
+
+  private followCamera(): void {
+    const viewport: Viewport = { width: this.scale.width, height: this.scale.height };
+    const center = clampCameraCenter(this.map, viewport, {
+      x: this.playerView.x,
+      y: this.playerView.y,
+    });
+
+    this.cameras.main.centerOn(center.x, center.y);
+    markCamera(scrollFromCenter(center, viewport));
   }
 
   // ── 입력 ────────────────────────────────────────────────────────────────
@@ -126,12 +139,6 @@ export class OverworldScene extends Phaser.Scene {
     this.facingPip = this.add.rectangle(0, 0, 4, 4, 0xf2e6c9);
 
     return this.add.container(0, 0, [body, this.facingPip]);
-  }
-
-  private syncPlayerView(): void {
-    this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
-    markWalker(this.walker);
-    this.updateFacingPip();
   }
 
   /** 바라보는 방향을 눈에 보이게 한다 — 이게 없으면 제자리 회전이 아무 반응 없는 것처럼 보인다. */
