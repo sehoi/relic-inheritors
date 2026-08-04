@@ -6,6 +6,8 @@
  * 대신 글자 폭이 제각각인 폰트에서는 어긋날 수 있어, 본문은 고정폭 폰트를 쓴다.
  */
 
+import { Problems, ValidationError, readText } from '../validation/index.js';
+
 export interface DialogueLine {
   /** 말하는 사람. 없으면 나레이션. */
   readonly speaker?: string;
@@ -39,15 +41,7 @@ export interface TextBoxLayout {
  */
 export const TEXT_BOX_LAYOUT: TextBoxLayout = { maxCharsPerLine: 34, maxLines: 2 };
 
-export class DialogueError extends Error {
-  readonly problems: readonly string[];
-
-  constructor(problems: readonly string[]) {
-    super(`대화 스크립트가 유효하지 않습니다 (${problems.length}건):\n- ${problems.join('\n- ')}`);
-    this.name = 'DialogueError';
-    this.problems = problems;
-  }
-}
+const SUBJECT = '대화 스크립트';
 
 /**
  * 한 문단을 줄 단위로 접는다.
@@ -120,19 +114,17 @@ export interface DialogueSession {
 }
 
 export function validateDialogueScript(script: DialogueScript): void {
-  const problems: string[] = [];
+  const problems = Problems.create();
 
-  if (script.id.trim().length === 0) problems.push('id 가 비어 있습니다.');
-  if (script.lines.length === 0) problems.push(`"${script.id}": 대사가 하나도 없습니다.`);
+  readText(script.id, 'id', problems);
+  if (script.lines.length === 0) problems.add(`"${script.id}": 대사가 하나도 없습니다.`);
 
   script.lines.forEach((line, position) => {
-    if (line.text.trim().length === 0) {
-      // 빈 대사는 화면에 아무것도 안 뜨고 넘어가서, 플레이 중에는 버그처럼 보인다.
-      problems.push(`"${script.id}" lines[${position}]: text 가 비어 있습니다.`);
-    }
+    // 빈 대사는 화면에 아무것도 안 뜨고 넘어가서, 플레이 중에는 버그처럼 보인다.
+    readText(line.text, `"${script.id}" lines[${position}].text`, problems);
   });
 
-  if (problems.length > 0) throw new DialogueError(problems);
+  problems.throwIfAny(SUBJECT);
 }
 
 /** 스크립트를 쪽 단위로 펼쳐 세션을 연다. */
@@ -146,7 +138,7 @@ export function openDialogue(script: DialogueScript, layout: TextBoxLayout): Dia
   );
 
   if (pages.length === 0) {
-    throw new DialogueError([`"${script.id}": 보여줄 쪽이 없습니다.`]);
+    throw new ValidationError(SUBJECT, [`"${script.id}": 보여줄 쪽이 없습니다.`]);
   }
 
   return { scriptId: script.id, pages, index: 0 };

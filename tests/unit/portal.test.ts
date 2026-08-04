@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { ValidationError } from '../../src/core/validation/index.js';
 import {
-  PortalError,
   portalAt,
   validatePortalNetwork,
   type Portal,
@@ -48,7 +48,7 @@ describe('validatePortalNetwork', () => {
 
   it('같은 칸에 겹친 포탈을 거부한다', () => {
     const twin: Portal = { ...down, id: 'a-down-2' };
-    expect(() => validatePortalNetwork({ a: [down, twin], b: [up] })).toThrow(/겹칩니다/);
+    expect(() => validatePortalNetwork({ a: [down, twin], b: [up] })).toThrow(/포탈 칸.*중복/);
   });
 
   it('문제를 전부 모아서 보고한다', () => {
@@ -57,8 +57,8 @@ describe('validatePortalNetwork', () => {
       validatePortalNetwork({ a: [broken, { ...broken, id: 'a-down' }] });
       throw new Error('실패를 기대했습니다.');
     } catch (error) {
-      expect(error).toBeInstanceOf(PortalError);
-      expect((error as PortalError).problems.length).toBeGreaterThan(1);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).problems.length).toBeGreaterThan(1);
     }
   });
 

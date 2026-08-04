@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { ValidationError } from '../../src/core/validation/index.js';
 import {
-  DialogueError,
   advanceDialogue,
   currentPage,
   isLastPage,
@@ -74,7 +74,7 @@ describe('validateDialogueScript', () => {
   });
 
   it('빈 id·빈 대사 목록·빈 텍스트를 거부한다', () => {
-    expect(() => validateDialogueScript({ id: '', lines: [{ text: 'x' }] })).toThrow(DialogueError);
+    expect(() => validateDialogueScript({ id: '', lines: [{ text: 'x' }] })).toThrow(ValidationError);
     expect(() => validateDialogueScript({ id: 'a', lines: [] })).toThrow(/대사가 하나도/);
     // 빈 대사는 화면에 아무것도 안 뜨고 넘어가서 플레이 중에는 버그처럼 보인다.
     expect(() => validateDialogueScript({ id: 'a', lines: [{ text: '  ' }] })).toThrow(/text/);
@@ -125,7 +125,7 @@ describe('대화 진행', () => {
 
   it('보여줄 쪽이 없는 스크립트를 거부한다', () => {
     expect(() => openDialogue({ id: 'empty', lines: [{ text: ' ' }] }, LAYOUT)).toThrow(
-      DialogueError,
+      ValidationError,
     );
   });
 
