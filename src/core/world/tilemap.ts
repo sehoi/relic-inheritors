@@ -21,6 +21,21 @@ export interface TileLayer {
 
 export type MapProperty = string | number | boolean;
 
+/**
+ * 맵이 참조하는 타일셋.
+ *
+ * `assetKey` 는 **파일 경로가 아니라 `assets/index.json` 의 키다** (ADR-006).
+ * Tiled 는 보통 여기에 이미지 상대 경로를 쓰지만, 그러면 색인을 우회하게 되고
+ * 에셋이 옮겨질 때 맵이 조용히 깨진다. 맵에는 이름만 두고 해석은 색인이 한다.
+ */
+export interface TilesetRef {
+  /** 이 타일셋의 첫 gid. Tiled 규약상 1부터 시작한다 (0은 빈 칸). */
+  firstGid: number;
+  assetKey: string;
+  columns: number;
+  tileCount: number;
+}
+
 export interface TileMap {
   /** 타일 단위 크기 */
   width: number;
@@ -28,6 +43,7 @@ export interface TileMap {
   /** 픽셀 단위 타일 크기 */
   tileWidth: number;
   tileHeight: number;
+  tilesets: readonly TilesetRef[];
   layers: readonly TileLayer[];
   properties: Readonly<Record<string, MapProperty>>;
 }
@@ -76,6 +92,75 @@ function parseProperties(raw: unknown, problems: string[]): Record<string, MapPr
     result[name] = value;
   });
   return result;
+}
+
+function parseTilesets(raw: unknown, problems: string[]): TilesetRef[] {
+  if (!Array.isArray(raw)) {
+    problems.push('tilesets 는 배열이어야 합니다.');
+    return [];
+  }
+  if (raw.length === 0) {
+    problems.push('tilesets 가 비어 있습니다. 어떤 타일도 그릴 수 없습니다.');
+    return [];
+  }
+
+  const tilesets: TilesetRef[] = [];
+  let previousFirstGid = 0;
+
+  raw.forEach((entry, position) => {
+    const where = `tilesets[${position}]`;
+
+    if (!isRecord(entry)) {
+      problems.push(`${where}: 객체여야 합니다.`);
+      return;
+    }
+
+    if (entry['source'] !== undefined) {
+      problems.push(
+        `${where}: 외부 타일셋(.tsx) 참조는 지원하지 않습니다. Tiled에서 "Embed tileset"으로 내보내세요.`,
+      );
+      return;
+    }
+
+    const firstGid = entry['firstgid'];
+    const assetKey = entry['name'];
+    const columns = entry['columns'];
+    const tileCount = entry['tilecount'];
+    let valid = true;
+
+    if (!isPositiveInt(firstGid)) {
+      problems.push(`${where}: firstgid 는 양의 정수여야 합니다 (받은 값: ${String(firstGid)}).`);
+      valid = false;
+    } else if (firstGid <= previousFirstGid) {
+      problems.push(`${where}: firstgid 는 앞선 타일셋보다 커야 합니다 (${previousFirstGid} 다음에 ${firstGid}).`);
+      valid = false;
+    }
+
+    if (typeof assetKey !== 'string' || assetKey.trim().length === 0) {
+      problems.push(`${where}: name 이 비어 있습니다. name 은 assets/index.json 의 키입니다 (ADR-006).`);
+      valid = false;
+    }
+    if (!isPositiveInt(columns)) {
+      problems.push(`${where}: columns 는 양의 정수여야 합니다.`);
+      valid = false;
+    }
+    if (!isPositiveInt(tileCount)) {
+      problems.push(`${where}: tilecount 는 양의 정수여야 합니다.`);
+      valid = false;
+    }
+
+    if (!valid) return;
+
+    previousFirstGid = firstGid as number;
+    tilesets.push({
+      firstGid: firstGid as number,
+      assetKey: assetKey as string,
+      columns: columns as number,
+      tileCount: tileCount as number,
+    });
+  });
+
+  return tilesets;
 }
 
 function parseLayer(
@@ -194,7 +279,27 @@ export function parseTiledMap(raw: unknown): TileMap {
     );
   }
 
+  const tilesets = parseTilesets(raw['tilesets'], problems);
   const properties = parseProperties(raw['properties'], problems);
+
+  // 모든 gid 가 어느 타일셋의 범위에 드는지 확인한다.
+  // 이걸 안 하면 맵을 손으로 고치다 범위를 벗어난 순간 화면에 구멍이 뚫리는데,
+  // 그 원인을 런타임에서 역추적하는 건 루프가 가장 못하는 일이다.
+  if (tilesets.length > 0) {
+    const outOfRange = new Set<number>();
+    for (const layer of layers) {
+      for (const gid of layer.data) {
+        if (gid !== 0 && findTilesetForGid(tilesets, gid) === undefined) outOfRange.add(gid);
+      }
+    }
+    if (outOfRange.size > 0) {
+      const last = tilesets[tilesets.length - 1] as TilesetRef;
+      problems.push(
+        `어떤 타일셋에도 속하지 않는 gid: ${[...outOfRange].sort((a, b) => a - b).join(', ')}. ` +
+          `유효 범위는 1 ~ ${last.firstGid + last.tileCount - 1} 입니다.`,
+      );
+    }
+  }
 
   if (problems.length > 0) {
     throw new TileMapError(problems);
@@ -205,9 +310,30 @@ export function parseTiledMap(raw: unknown): TileMap {
     height: height as number,
     tileWidth: tileWidth as number,
     tileHeight: tileHeight as number,
+    tilesets,
     layers,
     properties,
   };
+}
+
+function findTilesetForGid(
+  tilesets: readonly TilesetRef[],
+  gid: number,
+): TilesetRef | undefined {
+  return tilesets.find(
+    (tileset) => gid >= tileset.firstGid && gid < tileset.firstGid + tileset.tileCount,
+  );
+}
+
+/** 이 gid 를 담당하는 타일셋. 빈 칸(0)이거나 범위 밖이면 undefined. */
+export function tilesetForGid(map: TileMap, gid: number): TilesetRef | undefined {
+  if (gid === 0) return undefined;
+  return findTilesetForGid(map.tilesets, gid);
+}
+
+/** gid 를 해당 타일셋 안의 프레임 번호(0부터)로 바꾼다. */
+export function localTileIndex(tileset: TilesetRef, gid: number): number {
+  return gid - tileset.firstGid;
 }
 
 export function findLayer(map: TileMap, name: string): TileLayer | undefined {
