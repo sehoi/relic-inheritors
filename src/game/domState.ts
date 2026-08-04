@@ -1,3 +1,4 @@
+import type { DialogueSession } from '../core/dialogue/index.js';
 import type { Walker } from '../core/world/movement.js';
 
 /**
@@ -26,4 +27,10 @@ export function markWalker(walker: Walker): void {
 /** 카메라 좌상단(스크롤). 맵 경계 클램프가 실제로 걸리는지 스모크가 이걸로 판정한다. */
 export function markCamera(scroll: { x: number; y: number }): void {
   document.body.dataset['camera'] = `${Math.round(scroll.x)},${Math.round(scroll.y)}`;
+}
+
+/** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
+export function markDialogue(session: DialogueSession | undefined): void {
+  document.body.dataset['dialogue'] =
+    session === undefined ? 'closed' : `${session.index + 1}/${session.pages.length}`;
 }

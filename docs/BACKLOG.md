@@ -29,7 +29,7 @@
 - [x] **T-007** 타일맵 로딩 (Tiled `.tmj`) + 렌더링 — `core/world/tilemap.ts` 파서·검증, 플레이스홀더 렌더러, `ruin-entrance.tmj` (30x16)
 - [x] **T-008** 그리드 4방향 이동 + 충돌 판정 — `core/world/movement.ts`, 막혀도 방향은 바뀜, 스모크가 실제 이동까지 검증
 - [x] **T-009** 카메라 추적 + 맵 경계 클램프 — `core/world/camera.ts`, 맵을 60x40(960x640px)으로 확장해 카메라가 실제로 의미를 갖게 함
-- [ ] **T-010** 대화 시스템: 텍스트박스, 페이지네이션, NPC 상호작용
+- [x] **T-010** 대화 시스템 — `core/dialogue` (줄바꿈·쪽 나눔·진행), `core/world/interaction` (마주 본 대상 찾기, NPC 충돌), 텍스트박스 UI, 유적 입구 NPC 3명
 - [ ] **T-011** 맵 간 이동 (입구/계단) + 플레이어 위치 복원
 - [ ] **T-012** 데이터 스키마(Zod) + 데이터 검증 테스트
   - DoD: `Relic`·`Resonance`·`Skill`·`Item`·`Enemy` 스키마 정의. 존재하지 않는 ID 참조 시 테스트 실패

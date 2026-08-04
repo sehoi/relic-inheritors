@@ -58,25 +58,50 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   await expect(page.locator('body')).toHaveAttribute('data-player', '8,6');
   await expect(page.locator('body')).toHaveAttribute('data-camera', '0,0');
 
+  // ── NPC 충돌과 대화 (T-010) ──────────────────────────────────────────────
+  // 조사원 NPC 가 (8,4) 에 서 있다. 한 칸 올라가면 바로 앞이다.
+  await expect(page.locator('body')).toHaveAttribute('data-dialogue', 'closed');
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,5');
+
+  // NPC 는 지형처럼 막는다. 제자리에 남되 방향은 위를 향한다.
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,5');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'up');
+
+  // 마주 본 상태에서 상호작용하면 대화가 열린다.
+  await stepKey(page, 'Space');
+  await expect(page.locator('body')).toHaveAttribute('data-dialogue', /^1\/[1-9]/);
+  await page.screenshot({ path: `${SHOT_DIR}/dialogue.png` });
+
+  // 대화 중에는 걷지 않는다.
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,5');
+
+  // 끝까지 넘기면 닫힌다. 쪽 수가 늘어도 깨지지 않도록 넉넉히 누른다.
+  for (let i = 0; i < 12; i += 1) {
+    const state = await page.locator('body').getAttribute('data-dialogue');
+    if (state === 'closed') break;
+    await stepKey(page, 'Space');
+  }
+  await expect(page.locator('body')).toHaveAttribute('data-dialogue', 'closed');
+
+  // ── 카메라 (T-009) ───────────────────────────────────────────────────────
   // 입구 홀은 x=16 까지다. 8번 오른쪽으로 가면 벽에 닿는다.
   for (let i = 0; i < 8; i += 1) {
     await stepKey(page, 'ArrowRight');
   }
 
-  await expect(page.locator('body')).toHaveAttribute('data-player', '16,6');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '16,5');
   await expect(page.locator('body')).toHaveAttribute('data-facing', 'right');
 
   // 플레이어가 화면 중앙(240px)을 넘어섰으므로 카메라가 따라 움직인다.
   // 세로는 여전히 위쪽 경계에 걸려 0 이다 — 축마다 독립적으로 판단한다.
   await expect(page.locator('body')).toHaveAttribute('data-camera', '24,0');
 
-  // 막힌 방향으로 더 눌러도 제자리이되, 방향은 바뀐다.
+  // 막힌 방향으로 더 눌러도 제자리다.
   await stepKey(page, 'ArrowRight');
-  await expect(page.locator('body')).toHaveAttribute('data-player', '16,6');
-
-  await stepKey(page, 'ArrowDown');
-  await expect(page.locator('body')).toHaveAttribute('data-player', '16,7');
-  await expect(page.locator('body')).toHaveAttribute('data-facing', 'down');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '16,5');
 
   await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
 
