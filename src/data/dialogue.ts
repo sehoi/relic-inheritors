@@ -1,3 +1,4 @@
+import { createRegistry } from '../core/data/registry.js';
 import type { DialogueScript } from '../core/dialogue/index.js';
 
 /**
@@ -49,13 +50,13 @@ export const DIALOGUE_SCRIPTS: Readonly<Record<string, DialogueScript>> = {
   },
 };
 
+/** 키와 id 가 어긋나거나 중복되면 모듈을 불러오는 순간 터진다 — 늦게 아는 것보다 낫다. */
+export const dialogueRegistry = createRegistry(
+  '대화 스크립트',
+  DIALOGUE_SCRIPTS,
+  (script) => script.id,
+);
+
 export function dialogueScript(id: string): DialogueScript {
-  const script = DIALOGUE_SCRIPTS[id];
-  if (script === undefined) {
-    throw new Error(
-      `대화 스크립트 "${id}" 가 없습니다.\n` +
-        `src/data/dialogue.ts 에 추가하세요. 현재 등록된 것: ${Object.keys(DIALOGUE_SCRIPTS).join(', ')}`,
-    );
-  }
-  return script;
+  return dialogueRegistry.get(id);
 }

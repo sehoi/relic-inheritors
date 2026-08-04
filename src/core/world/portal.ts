@@ -5,6 +5,7 @@
  * 조사해서 발동하는 문(T-011 범위 밖)이 필요해지면 `trigger` 를 추가한다.
  */
 
+import { Problems, createDuplicateGuard } from '../validation/index.js';
 import type { Direction, GridPosition } from './movement.js';
 
 export interface PortalTarget {
@@ -28,16 +29,6 @@ export function portalAt(
   return portals.find((portal) => portal.position.x === x && portal.position.y === y);
 }
 
-export class PortalError extends Error {
-  readonly problems: readonly string[];
-
-  constructor(problems: readonly string[]) {
-    super(`포탈 배치가 유효하지 않습니다 (${problems.length}건):\n- ${problems.join('\n- ')}`);
-    this.name = 'PortalError';
-    this.problems = problems;
-  }
-}
-
 /**
  * 포탈망 전체를 검사한다.
  *
@@ -45,38 +36,36 @@ export class PortalError extends Error {
  * 그러면 밟자마자 다시 발동해 두 맵을 무한히 오가고, 플레이어는 조작 불능이 된다.
  * 런타임에 발견하면 원인을 짚기 어려우므로 여기서 막는다.
  */
-export function validatePortalNetwork(portalsByMap: Readonly<Record<string, readonly Portal[]>>): void {
-  const problems: string[] = [];
-  const seenIds = new Set<string>();
+export function validatePortalNetwork(
+  portalsByMap: Readonly<Record<string, readonly Portal[]>>,
+): void {
+  const problems = Problems.create();
+  const guardId = createDuplicateGuard('포탈 id', problems);
 
   for (const [mapId, portals] of Object.entries(portalsByMap)) {
-    const occupied = new Set<string>();
+    const guardCell = createDuplicateGuard('포탈 칸', problems);
 
     for (const portal of portals) {
-      const where = `${mapId}/${portal.id}`;
+      const at = problems.scope(`${mapId}/${portal.id}`);
 
-      if (seenIds.has(portal.id)) problems.push(`${where}: 포탈 id 가 중복됩니다.`);
-      seenIds.add(portal.id);
-
-      const key = `${portal.position.x},${portal.position.y}`;
-      if (occupied.has(key)) problems.push(`${where}: 같은 칸에 포탈이 겹칩니다 (${key}).`);
-      occupied.add(key);
+      guardId(portal.id);
+      guardCell(`${portal.position.x},${portal.position.y}`);
 
       const targetMap = portalsByMap[portal.target.mapId];
       if (targetMap === undefined) {
-        problems.push(`${where}: 대상 맵 "${portal.target.mapId}" 을(를) 찾을 수 없습니다.`);
+        at.add(`대상 맵 "${portal.target.mapId}" 을(를) 찾을 수 없습니다.`);
         continue;
       }
 
       const landing = portalAt(targetMap, portal.target.position.x, portal.target.position.y);
       if (landing !== undefined) {
-        problems.push(
-          `${where}: 도착 지점 (${portal.target.position.x}, ${portal.target.position.y}) 이 ` +
+        at.add(
+          `도착 지점 (${portal.target.position.x}, ${portal.target.position.y}) 이 ` +
             `포탈 "${landing.id}" 위입니다. 밟자마자 되돌아가 무한히 오갑니다. 한 칸 옆으로 옮기세요.`,
         );
       }
     }
   }
 
-  if (problems.length > 0) throw new PortalError(problems);
+  problems.throwIfAny('포탈 배치');
 }

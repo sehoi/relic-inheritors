@@ -22,7 +22,7 @@
 | 번들러 | Vite | `npm run dev` 즉시 실행, HMR |
 | 테스트 | Vitest | core 로직 유닛 테스트 |
 | 스모크 | Playwright (chromium) | 실제 부팅 + 콘솔 에러 0 + 스크린샷 |
-| 검증 | Zod | 데이터 파일 스키마 |
+| 검증 | 자체 커널 (`core/validation`) | 데이터 파일 스키마. Zod를 검토했으나 도입하지 않았다 — ADR-008 |
 | 린트/포맷 | ESLint + Prettier | |
 | 맵 편집 | Tiled (`.tmj` JSON) | 사람이 손댈 때만 사용, 루프는 JSON 직접 생성 가능 |
 | CI | GitHub Actions | |
@@ -127,7 +127,7 @@ function step(state: BattleState, cmd: Command): { state: BattleState; events: B
 | 계층 | 도구 | 무엇을 잡나 | 실행 시간 |
 |---|---|---|---|
 | 유닛 | Vitest | 데미지 공식, 레벨업, 인벤토리, 세이브 마이그레이션 | ~1s |
-| 데이터 | Zod + Vitest | 존재하지 않는 스킬 ID 참조, 맵 연결 끊김 | ~1s |
+| 데이터 | `core/validation` + Vitest | 존재하지 않는 스킬 ID 참조, 맵 연결 끊김 | ~1s |
 | 밸런스 | `tools/sim.ts` | 유물 조합별 승률·침식 곡선 → GDD §5.5 불변식 위반 (지배 전략 발생, 사장된 유물, 전투 길이 이탈) | ~5s |
 | 스모크 | Playwright | 부팅 실패, 에셋 404, 콘솔 에러, 씬 전환 크래시 | ~15s |
 | 시각 | 스크린샷 아카이브 | 사람이 나중에 훑어볼 근거 | — |
