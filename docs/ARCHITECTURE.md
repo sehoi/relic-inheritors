@@ -52,14 +52,16 @@ jrpg/
 │  │  ├─ rng/               # 시드 기반 결정론적 난수 (mulberry32)
 │  │  ├─ stats/             # 스탯 계산, 버프/디버프 합성
 │  │  ├─ battle/            # 턴 큐, 행동 해석, 데미지 공식, 상태이상, AI
+│  │  ├─ relic/             # ★ 유물: 장착 슬롯, 공명 판정, 숙련도, 침식
 │  │  ├─ party/             # 파티 구성, 액터 상태
-│  │  ├─ inventory/         # 소지품, 장비 슬롯, 사용 효과
+│  │  ├─ inventory/         # 소지품, 사용 효과
 │  │  ├─ progression/       # 경험치 곡선, 레벨업, 스킬 습득
 │  │  ├─ world/             # 맵 그래프, 이동 판정, 인카운터 테이블
 │  │  ├─ quest/             # 플래그, 퀘스트 상태 머신
 │  │  └─ save/              # 직렬화 + 스키마 버전 마이그레이션
 │  ├─ data/                 # 콘텐츠 (전부 Zod 스키마 검증)
 │  │  ├─ schema.ts
+│  │  ├─ relics.ts  resonances.ts   # ★ 루프가 가장 자주 늘리는 파일
 │  │  ├─ actors.ts  skills.ts  items.ts  enemies.ts
 │  │  ├─ maps/*.tmj
 │  │  └─ dialogue/*.json
@@ -68,11 +70,14 @@ jrpg/
 │  │  ├─ ui/                # 창, 커서, 텍스트박스, HP바
 │  │  └─ adapters/          # core 상태 ↔ Phaser 표현 브릿지
 │  └─ main.ts
+├─ assets/                  # CC0 에셋. index.json에 등재된 것만 사용 가능
+│  ├─ index.json            # 에셋 색인 (경로 · 용도 · 출처 · 라이선스)
+│  └─ CREDITS.md            # 출처 표기 (누락 시 CI 실패)
 ├─ tools/
 │  └─ sim.ts                # 밸런스 시뮬레이터 CLI (헤드리스 전투 N회)
 └─ tests/
    ├─ unit/                 # core 대상
-   ├─ balance/              # 시뮬 기반 밸런스 회귀
+   ├─ balance/              # 시뮬 기반 밸런스 회귀 (GDD §5.5 불변식)
    └─ smoke/                # Playwright 부팅 검증
 ```
 
@@ -123,7 +128,7 @@ function step(state: BattleState, cmd: Command): { state: BattleState; events: B
 |---|---|---|---|
 | 유닛 | Vitest | 데미지 공식, 레벨업, 인벤토리, 세이브 마이그레이션 | ~1s |
 | 데이터 | Zod + Vitest | 존재하지 않는 스킬 ID 참조, 맵 연결 끊김 | ~1s |
-| 밸런스 | `tools/sim.ts` | "Lv5 파티가 던전1 보스에 승률 20%" 같은 회귀 | ~5s |
+| 밸런스 | `tools/sim.ts` | 유물 조합별 승률·침식 곡선 → GDD §5.5 불변식 위반 (지배 전략 발생, 사장된 유물, 전투 길이 이탈) | ~5s |
 | 스모크 | Playwright | 부팅 실패, 에셋 404, 콘솔 에러, 씬 전환 크래시 | ~15s |
 | 시각 | 스크린샷 아카이브 | 사람이 나중에 훑어볼 근거 | — |
 
