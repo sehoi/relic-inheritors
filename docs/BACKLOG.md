@@ -8,20 +8,16 @@
 
 ---
 
-## M0 — 부트스트랩
+## M0 — 부트스트랩 ✅
 
-- [ ] **T-001** Vite + TypeScript(strict) + Phaser 3 프로젝트 초기화
-  - DoD: `npm run dev`로 검은 화면 + "Hello" 텍스트가 뜬다
-- [ ] **T-002** 품질 파이프라인 구성
-  - DoD: `npm run verify` = `typecheck && lint && test && build`가 초록. ESLint에 `src/core/**`의 `phaser` import 금지 규칙 포함
-- [ ] **T-003** Vitest 셋업 + `core/rng` 결정론적 RNG 구현
-  - DoD: 같은 시드 → 같은 수열임을 검증하는 테스트 통과
-- [ ] **T-004** Playwright 스모크 테스트
-  - DoD: 부팅 시 콘솔 에러 0을 검증하고 스크린샷을 `docs/screenshots/`에 남긴다
-- [ ] **T-005** GitHub Actions CI
-  - DoD: PR에서 verify + 스모크가 돌고, 스크린샷이 아티팩트로 올라간다
-- [ ] **T-006** 씬 골격 (Boot → Title → Overworld) + 씬 전환
-  - DoD: 타이틀에서 Enter로 오버월드 진입, 스모크가 두 씬 모두 통과
+> 사람이 직접 수행. T-001~T-006은 서로 맞물려 있어(빌드 없이는 CI를 못 만들고, 씬 없이는 스모크를 못 짠다) 하나의 PR로 처리했다. T-007a부터는 1태스크 = 1PR.
+
+- [x] **T-001** Vite + TypeScript(strict) + Phaser 3 프로젝트 초기화
+- [x] **T-002** 품질 파이프라인 구성 — `npm run verify` 초록. ESLint가 ADR-001(core에 phaser 금지)과 ADR-002(`Math.random()` 금지)를 기계적으로 강제한다
+- [x] **T-003** Vitest 셋업 + `core/rng` 결정론적 RNG (mulberry32) — 12 테스트 통과
+- [x] **T-004** Playwright 스모크 — 콘솔 에러 0 검증 + `docs/screenshots/` 저장
+- [x] **T-005** GitHub Actions CI — verify + 스모크 + 스크린샷 아티팩트
+- [x] **T-006** 씬 골격 (Boot → Title → Overworld) + Enter 전환
 
 ## M1 — 탐색
 
