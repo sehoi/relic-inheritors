@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { assetCatalog } from '../assets/catalog.js';
 import { queueAssets } from '../assets/queueAssets.js';
-import { markScene } from '../sceneMarker.js';
+import { markScene } from '../domState.js';
 
 /**
  * 에셋 로딩과 초기 설정 담당.
