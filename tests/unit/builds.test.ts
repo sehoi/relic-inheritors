@@ -4,6 +4,7 @@ import {
   choiceBuildSize,
   enumerateBuilds,
   exactBuilds,
+  exclusionPenalty,
   groupBySize,
   rankSpread,
   shareInBand,
@@ -200,5 +201,37 @@ describe('topBuilds / adoptionRates', () => {
   it('범위 밖 비율을 거부한다', () => {
     expect(() => topBuilds(scored, 0)).toThrow(RangeError);
     expect(() => topBuilds(scored, 1.5)).toThrow(RangeError);
+  });
+});
+
+describe('exclusionPenalty', () => {
+  const scored = [
+    { build: { id: 'a+b', relics: ['a', 'b'] }, winRate: 0.9 },
+    { build: { id: 'a+c', relics: ['a', 'c'] }, winRate: 0.85 },
+    { build: { id: 'b+c', relics: ['b', 'c'] }, winRate: 0.4 },
+  ];
+
+  it('그 유물을 뺀 최고 조합과의 차이를 낸다', () => {
+    // a 를 빼면 최고가 0.4 로 떨어진다 — a 는 사실상 필수다.
+    expect(exclusionPenalty(scored, 'a')).toBeCloseTo(0.5);
+  });
+
+  it('빼도 손해가 없으면 0 이다', () => {
+    // b 를 빼도 a+c 가 0.85 로 남는다.
+    expect(exclusionPenalty(scored, 'b')).toBeCloseTo(0.05);
+  });
+
+  it('그 유물이 안 들어간 조합이 없으면 잴 수 없다', () => {
+    // 잴 수 없는 것과 통과한 것은 다른 상태다 — 0 을 돌려주면 거짓말이 된다.
+    const always = [{ build: { id: 'a+b', relics: ['a', 'b'] }, winRate: 0.9 }];
+    expect(exclusionPenalty(always, 'a')).toBeUndefined();
+  });
+
+  it('없는 유물을 물으면 손해가 0 이다', () => {
+    expect(exclusionPenalty(scored, 'nope')).toBe(0);
+  });
+
+  it('조합이 비어 있으면 던진다', () => {
+    expect(() => exclusionPenalty([], 'a')).toThrow(RangeError);
   });
 });

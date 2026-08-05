@@ -172,6 +172,34 @@ export function adoptionRates(
   return rates;
 }
 
+/**
+ * 이 유물을 빼면 얼마나 손해인가 (불변식 4b · 필수 유물 부재).
+ *
+ * **채택률의 반대쪽 구멍을 막는다.** 채택률 하한은 "아무도 안 쓰는 유물" 을 잡지만
+ * "모두가 반드시 쓰는 유물" 은 못 잡는다. 좋은 조합 전부에 끼는 유물이 있으면 그건
+ * 사실상 슬롯 하나가 고정됐다는 뜻이고, 조합 설계의 폭이 그만큼 줄어든 것이다.
+ *
+ * 채택률에 상한을 두는 대신 **직접 물어본다** — "이 유물을 빼고도 비슷하게 셀 수 있는가".
+ * 상한은 "상위 몇 %를 좋은 조합으로 볼 것인가" 라는 임의의 기준에 결과가 매달리지만,
+ * 이 질문은 그렇지 않다.
+ *
+ * 그 유물 없이는 조합을 만들 수 없으면(가진 유물이 슬롯 수와 같은 경우) `undefined`.
+ * 잴 수 없는 것과 통과한 것은 다른 상태다.
+ */
+export function exclusionPenalty<T extends { readonly build: RelicBuild; readonly winRate: number }>(
+  entries: readonly T[],
+  relicId: RelicId,
+): number | undefined {
+  if (entries.length === 0) throw new RangeError('조합이 하나도 없습니다.');
+
+  const without = entries.filter((entry) => !entry.build.relics.includes(relicId));
+  if (without.length === 0) return undefined;
+
+  const best = Math.max(...entries.map((entry) => entry.winRate));
+  const bestWithout = Math.max(...without.map((entry) => entry.winRate));
+  return best - bestWithout;
+}
+
 /** 승률 상위 `ratio` 만큼의 조합. 최소 하나는 남긴다. */
 export function topBuilds<T extends { readonly build: RelicBuild; readonly winRate: number }>(
   entries: readonly T[],
