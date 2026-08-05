@@ -1,4 +1,31 @@
 import type { BattleActor, Stats } from '../core/battle/index.js';
+import type { ExpReward, LevelCurve } from '../core/progress/level.js';
+
+/**
+ * 레벨 곡선 (GDD §6.3).
+ *
+ * **앞을 아주 완만하게 잡았다.** 실측에서 회복 없이 6판이면 전멸했는데(플레이 피드백),
+ * 레벨업이 완전 회복을 겸하므로 초반 레벨업 간격이 곧 유적에서 버티는 길이가 된다.
+ *
+ * `base: 6` 이면 첫 레벨업이 잡몹 두어 마리다. 지수 1.8 이 뒤를 가파르게 만들어
+ * 후반에는 한 레벨이 수십 판이 된다 — 초반만 빠르고 전체가 빨라지지는 않는다.
+ */
+export const LEVEL_CURVE: LevelCurve = {
+  maxLevel: 40,
+  base: 6,
+  growth: 1.8,
+};
+
+/**
+ * 적 하나가 주는 경험치.
+ *
+ * 유적 입구(적 Lv2) 잡몹 하나가 7, 둘이면 14 — 첫 레벨업(6)이 첫 전투에서 온다.
+ * 처음 몇 판에서 레벨이 오르지 않으면 플레이어는 자기가 나아지는지 알 수 없다.
+ */
+export const EXP_REWARD: ExpReward = {
+  base: 5,
+  perLevel: 1,
+};
 
 /**
  * 스탯 성장 곡선.

@@ -35,13 +35,20 @@ function validSave(): Record<string, unknown> {
     inventory: { herb: 3 },
     worldRngState: 123_456,
     collectedSites: ['pillar-cache'],
+    exp: 120,
   };
 }
 
-/** v1 세이브 — 회수 지점이라는 개념이 없던 시절. 실제 마이그레이션의 입력이다. */
+/** v1 세이브 — 회수 지점도 경험치도 없던 시절. 실제 마이그레이션 두 단계의 입력이다. */
 function v1Save(): Record<string, unknown> {
-  const { collectedSites: _drop, ...rest } = validSave();
+  const { collectedSites: _sites, exp: _exp, ...rest } = validSave();
   return { ...rest, version: 1 };
+}
+
+/** v2 세이브 — 회수 지점은 있고 경험치는 없던 시절. */
+function v2Save(): Record<string, unknown> {
+  const { exp: _drop, ...rest } = validSave();
+  return { ...rest, version: 2 };
 }
 
 describe('parseSave', () => {
@@ -199,30 +206,43 @@ describe('migrateSave', () => {
   });
 });
 
-describe('v1 → v2 · 회수 지점 (T-039)', () => {
-  it('v1 세이브를 그대로 불러올 수 있다', () => {
-    // 첫 실제 마이그레이션. 여기까지 오는 데 필요한 기제는 T-037 에서 미리 만들어 뒀다.
+describe('실제 마이그레이션', () => {
+  it('v1 세이브가 두 단계를 거쳐 올라온다', () => {
+    // v1 → v2(회수 지점) → v3(경험치). 한 단계라도 빠지면 여기서 걸린다.
     const save = parseSave(v1Save());
     expect(save.version).toBe(SAVE_VERSION);
     expect(save.collectedSites).toEqual([]);
+    expect(save.exp).toBeGreaterThan(0);
   });
 
-  it('v1 의 나머지 값은 손대지 않는다', () => {
+  it('올라오는 동안 나머지 값은 손대지 않는다', () => {
     const before = v1Save();
     const save = parseSave(before);
 
     expect(save.worldRngState).toBe(before['worldRngState']);
     expect(save.attunement).toEqual(before['attunement']);
     expect(save.owned).toEqual(before['owned']);
+    expect(save.inventory).toEqual(before['inventory']);
   });
 
-  it('아무것도 줍지 않은 것으로 본다 (안전한 쪽)', () => {
+  it('v1 → v2 · 아무것도 줍지 않은 것으로 본다 (안전한 쪽)', () => {
     // "전부 주웠다" 로 보면 아직 못 가본 층의 유물을 영영 잃는다.
     // 다시 주울 수 있는 것은 손해가 아니라 이득이므로 이쪽이 안전하다.
     expect(parseSave(v1Save()).collectedSites).toEqual([]);
   });
 
-  it('v2 세이브는 회수 기록을 유지한다', () => {
+  it('v2 → v3 · 옛 파티가 약해지지 않는다', () => {
+    // v2 시절 파티는 항상 지역 레벨 6이었다. 경험치 0으로 올리면 레벨 1로 떨어진다 —
+    // 세지던 파티가 갑자기 약해지는 셈이라, 그전 수준만큼을 쳐준다.
+    expect(parseSave(v2Save()).exp).toBeGreaterThan(0);
+  });
+
+  it('v2 의 회수 기록은 유지된다', () => {
+    expect(parseSave(v2Save()).collectedSites).toEqual(['pillar-cache']);
+  });
+
+  it('최신 세이브는 손대지 않는다', () => {
+    expect(parseSave(validSave()).exp).toBe(120);
     expect(parseSave(validSave()).collectedSites).toEqual(['pillar-cache']);
   });
 });

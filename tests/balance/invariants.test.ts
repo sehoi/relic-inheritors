@@ -109,7 +109,8 @@ describe('불변식 3 · 침식 압박 (부분)', () => {
     expect(short.totalOverloads).toBeLessThan(long.totalOverloads);
   });
 
-  it.todo('유적 1회 완주에 정화가 최소 1회 필요하다 — 연속 전투 지원 필요 (M4 거점)');
+  // 연속 전투는 `attrition.test.ts` 가 잰다 (T-044). 회복 수단이 레벨업뿐인 지금은
+  // "정화가 몇 번 필요한가" 보다 "회복 없이 몇 판을 버티는가" 가 실제로 물어야 할 것이다.
 });
 
 describe('불변식 3 · 유물 침식 계수 (T-026)', () => {

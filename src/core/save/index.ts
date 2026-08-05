@@ -35,7 +35,7 @@ import {
  * `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다 — 조용히 통과시키면
  * 필드가 `undefined` 인 채로 게임이 돌아가다 한참 뒤에 이상해진다.
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SavedAilment {
   readonly kind: Ailment;
@@ -82,6 +82,13 @@ export interface SaveData {
    * 이게 없으면 불러올 때마다 유물이 다시 놓여 있어, 저장·로드 반복이 유물 무한 획득이 된다.
    */
   readonly collectedSites: readonly string[];
+  /**
+   * 파티 누적 경험치 (v3, T-044).
+   *
+   * **레벨은 저장하지 않는다.** 경험치에서 파생시킨다 — 둘 다 저장하면 언젠가 어긋나고,
+   * 어긋난 세이브는 어느 쪽이 옳은지 알 수 없다.
+   */
+  readonly exp: number;
 }
 
 // ── 마이그레이션 ──────────────────────────────────────────────────────────
@@ -105,7 +112,28 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 아직 못 가본 층의 유물을 영영 잃는다.
    */
   1: (data) => ({ ...data, collectedSites: [] }),
+
+  /**
+   * v2 → v3 · 레벨과 경험치 (T-044).
+   *
+   * v2 세이브의 파티는 지역 레벨(6)에 고정돼 있었다. 경험치 0으로 올리면 **레벨 1로 떨어진다** —
+   * 세지던 파티가 갑자기 약해지는 셈이라, 그전에 도달해 있던 만큼을 쳐준다.
+   *
+   * 정확한 환산은 불가능하다(그때는 경험치라는 개념이 없었다). 넉넉한 쪽으로 준다 —
+   * 덜 주면 옛 세이브가 못 이기는 전투에 갇히지만, 더 주는 것은 앞당겨질 뿐이다.
+   */
+  2: (data) => ({ ...data, exp: LEGACY_EXP }),
 };
+
+/**
+ * v2 이전 세이브에 쳐주는 경험치.
+ *
+ * 그 시절 파티는 항상 지역 레벨 6이었다. 레벨 6에 해당하는 누적치를 준다 —
+ * `data/` 의 곡선을 core 가 알 수 없으므로 값을 여기 박아둔다. 곡선이 바뀌어도
+ * **옛 세이브가 받는 양은 바뀌지 않아야 한다** — 마이그레이션은 과거를 다루는 코드이고,
+ * 과거는 나중에 바뀐 설정을 모른다.
+ */
+const LEGACY_EXP = 1_100;
 
 export class SaveError extends Error {
   constructor(message: string) {
@@ -268,6 +296,8 @@ export function parseSave(
     }
   }
 
+  const exp = readInt(data['exp'], 'exp', problems, { min: 0 });
+
   const collectedSites: string[] = [];
   const collectedRaw = readArray(data['collectedSites'], 'collectedSites', problems);
   if (collectedRaw !== undefined) {
@@ -300,6 +330,7 @@ export function parseSave(
     inventory,
     worldRngState: worldRngState as number,
     collectedSites,
+    exp: exp as number,
   };
 }
 

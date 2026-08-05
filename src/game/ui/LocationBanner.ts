@@ -19,6 +19,7 @@ const WILD_COLOR = '#d08a6a';
 export class LocationBanner {
   private readonly background: Phaser.GameObjects.Rectangle;
   private readonly placeText: Phaser.GameObjects.Text;
+  private readonly levelText: Phaser.GameObjects.Text;
   private readonly stateText: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene) {
@@ -31,6 +32,12 @@ export class LocationBanner {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#e8e3d3',
+    });
+
+    this.levelText = scene.add.text(0, PADDING, '', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#c8a15a',
     });
 
     this.stateText = scene.add.text(0, PADDING, '', {
@@ -46,13 +53,22 @@ export class LocationBanner {
   }
 
   /** 구역 이름이 없을 수 있다 (구역을 빠뜨린 칸). 그때는 맵 이름만 띄운다. */
-  show(mapName: string, zoneName: string | undefined, encounters: boolean): void {
+  show(
+    mapName: string,
+    zoneName: string | undefined,
+    encounters: boolean,
+    level: number,
+  ): void {
     const place = zoneName === undefined ? mapName : `${mapName} · ${zoneName}`;
     this.placeText.setText(place);
 
+    // 레벨은 탐색 중 늘 보여야 한다 — "지금 내려가도 되나" 를 판단하는 유일한 근거다.
+    this.levelText.setText(`Lv${level}`);
+    this.levelText.setX(PADDING + this.placeText.width + 8);
+
     this.stateText.setText(encounters ? '조우' : '안전');
     this.stateText.setColor(encounters ? WILD_COLOR : SAFE_COLOR);
-    this.stateText.setX(PADDING + this.placeText.width + 8);
+    this.stateText.setX(this.levelText.x + this.levelText.width + 8);
 
     this.background.setSize(this.stateText.x + this.stateText.width + PADDING, HEIGHT);
   }

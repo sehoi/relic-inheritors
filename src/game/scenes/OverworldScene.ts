@@ -30,6 +30,7 @@ import {
   collected,
   getInventory,
   partyForBattle,
+  partyLevel,
   partySkills,
   worldRandom,
 } from '../partyStore.js';
@@ -54,6 +55,7 @@ import { LocationBanner } from '../ui/LocationBanner.js';
 import {
   markCamera,
   markDialogue,
+  markLevel,
   markMap,
   markScene,
   markSites,
@@ -280,8 +282,9 @@ export class OverworldScene extends Phaser.Scene {
     const zone = this.currentZone();
     const encounters = zone?.encounters ?? false;
 
-    this.banner.show(MAP_NAMES[this.mapId], zone?.name, encounters);
+    this.banner.show(MAP_NAMES[this.mapId], zone?.name, encounters, partyLevel());
     markZone(zone?.id, encounters);
+    markLevel(partyLevel());
   }
 
   // ── 회수 지점 ───────────────────────────────────────────────────────────

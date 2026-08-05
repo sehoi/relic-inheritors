@@ -19,6 +19,8 @@ import { MOB_CURVES, PARTY_CURVES, makeCombatant, statsAtLevel } from './progres
  */
 
 export interface Encounter {
+  /** 이 조우의 적 레벨. 경험치 보상이 여기서 나온다 (T-044). */
+  readonly level: number;
   readonly actors: readonly BattleActor[];
   readonly profiles: Readonly<Record<ActorId, AiProfile>>;
   /** 파티원이 쓸 수 있는 스킬. M3 에서 장착 유물이 이 자리를 대신한다. */
@@ -89,6 +91,7 @@ export function ruinEncounter(level: number, options: EncounterOptions = {}): En
   }
 
   return {
+    level,
     actors,
     profiles,
     // 스킬을 여기서 들려주지 않는다. 능력의 출처는 장착 유물이다 (ADR-004).
@@ -114,25 +117,42 @@ export const ENCOUNTER_TABLES: Readonly<Record<MapId, readonly EncounterEntry[]>
     { weight: 3, mobCount: 1 },
     { weight: 1, mobCount: 3 },
   ],
+
+  /**
+   * **적 수가 레벨보다 훨씬 세게 먹힌다.**
+   *
+   * 실측(파티 Lv6, 적 Lv5): 2마리면 전멸 1%, 3마리면 100%. 한 마리 차이가 레벨 두어 개보다
+   * 크다 — 파티가 2인뿐이라 행동 수 비율이 그대로 화력 차이가 되기 때문이다.
+   *
+   * 예전 표는 3~4마리가 중심이었다. 2마리를 중심에 두고 3마리를 가끔 섞는다.
+   */
   'ruin-depths': [
-    { weight: 5, mobCount: 3 },
-    { weight: 4, mobCount: 2 },
-    { weight: 1, mobCount: 4 },
+    { weight: 6, mobCount: 2 },
+    { weight: 3, mobCount: 3 },
+    { weight: 1, mobCount: 1 },
   ],
 };
 
 /**
  * 걸음 수 범위 (GDD §6.1).
  *
- * 최소 8걸음은 안전하다 — 전투 직후 바로 또 싸우면 탐색이 성립하지 않는다.
- * 최대 20걸음 안에는 반드시 한 번. T-019 시뮬레이터가 연속 전투를 재게 되면 조정 대상이다.
+ * 최소 14걸음은 안전하다 — 전투 직후 바로 또 싸우면 탐색이 성립하지 않는다.
+ *
+ * **8~20 에서 넓혔다.** 유적에는 회복 수단이 없어(거점은 T-040) 전투 간격이 곧 소모 속도다.
+ * 실측에서 회복 없이 평균 6판이면 전멸했는데, 8걸음 간격이면 입구 홀을 한 바퀴 도는 사이에
+ * 그 6판이 다 벌어진다. 맵이 60x40 인 것을 감안하면 좁았다.
  */
-export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 8, maxSteps: 20 };
+export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 14, maxSteps: 32 };
 
-/** 지역 레벨. 층이 깊을수록 높다. */
+/**
+ * 지역의 **적** 레벨. 파티 레벨과 무관하다 — 파티는 경험치로 자란다 (`core/progress/level.ts`).
+ *
+ * **6·9 에서 내렸다.** 파티가 레벨 1에서 시작하게 되면서 기준점이 달라졌다.
+ * 입구는 처음 유물을 만지는 곳이므로 조합을 실험할 여유가 있어야 한다.
+ */
 export const AREA_LEVELS: Readonly<Record<MapId, number>> = {
-  'ruin-entrance': 6,
-  'ruin-depths': 9,
+  'ruin-entrance': 3,
+  'ruin-depths': 5,
 };
 
 /** 그 지역에서 한 번 조우를 뽑는다. */

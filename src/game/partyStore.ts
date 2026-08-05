@@ -26,8 +26,9 @@ import {
   type Resonance,
 } from '../core/relic/resonance.js';
 import { ALL_RESONANCES } from '../data/resonances.js';
-import { AREA_LEVELS, starterParty } from '../data/encounters.js';
-import { STARTING_MAP } from '../data/maps.js';
+import { starterParty } from '../data/encounters.js';
+import { LEVEL_CURVE } from '../data/progression.js';
+import { levelOf, progressOf, type LevelProgress } from '../core/progress/level.js';
 import {
   gainAll,
   rankOfRelic,
@@ -84,9 +85,45 @@ export function worldRandom(): Rng {
   return worldRng;
 }
 
+/** 파티 누적 경험치. **레벨은 여기서 파생된다** — 둘 다 저장하면 언젠가 어긋난다. */
+let partyExp = 0;
+
+export function partyLevel(): number {
+  return levelOf(partyExp, LEVEL_CURVE);
+}
+
+export function partyProgress(): LevelProgress {
+  return progressOf(partyExp, LEVEL_CURVE);
+}
+
+export function totalExp(): number {
+  return partyExp;
+}
+
+/**
+ * 경험치를 얻는다. 레벨이 올랐으면 오른 레벨을 돌려준다.
+ *
+ * **레벨업은 완전 회복을 겸한다.** 유적 안에서 회복할 방법이 이것뿐이고(거점은 T-040),
+ * 회복 없는 소모전은 실측에서 평균 6판 만에 전멸했다. "한 판만 더 버티면 오른다" 가
+ * 탐색을 이어갈 이유가 된다.
+ */
+export function gainExp(amount: number): number | undefined {
+  if (amount <= 0) return undefined;
+
+  const before = partyLevel();
+  partyExp += Math.floor(amount);
+  const after = partyLevel();
+  if (after === before) return undefined;
+
+  // 최대치는 새 레벨 기준이다. 그래서 vitals 를 지우는 것으로 완전 회복이 된다 —
+  // 여기서 숫자를 직접 채우면 유물 보정과 어긋난다.
+  vitals = undefined;
+  return after;
+}
+
 /** 보정이 붙지 않은 파티. 스탯 계산의 기준점이다. */
 function basePartyMembers(): readonly BattleActor[] {
-  return starterParty(AREA_LEVELS[STARTING_MAP]);
+  return starterParty(partyLevel());
 }
 
 export function ownedRelics(): readonly string[] {
@@ -281,6 +318,7 @@ export function resetParty(): void {
   attunement = {};
   owned = STARTING_RELICS;
   collectedSites = new Set();
+  partyExp = 0;
 }
 
 // ── 세이브 (T-037) ────────────────────────────────────────────────────────
@@ -326,6 +364,7 @@ export function captureSave(
     // 처음부터 다시 시작해, 저장·로드 반복으로 조우를 조작할 수 있다 (ADR-002).
     worldRngState: worldRandom().getState(),
     collectedSites: [...collectedSites].sort(),
+    exp: partyExp,
   };
 }
 
@@ -342,6 +381,8 @@ export function restoreSave(save: SaveData): void {
   inventory = { ...save.inventory };
   worldRng = restoreRng(save.worldRngState);
   collectedSites = new Set(save.collectedSites);
+  // 경험치를 먼저 넣는다 — 아래에서 vitals 를 채울 때 최대치가 레벨에 달려 있다.
+  partyExp = save.exp;
 
   const next: Record<ActorId, Vitals> = {};
   for (const [actorId, saved] of Object.entries(save.party)) {

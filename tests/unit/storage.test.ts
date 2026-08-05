@@ -47,6 +47,7 @@ function sample(): SaveData {
     inventory: { herb: 2 },
     worldRngState: 999,
     collectedSites: ['pillar-cache'],
+    exp: 120,
   };
 }
 
