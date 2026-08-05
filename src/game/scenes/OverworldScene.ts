@@ -26,6 +26,7 @@ import { getInventory, partyForBattle, partySkills, worldRandom } from '../party
 import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import type { RelicEntry } from './RelicScene.js';
+import type { SaveEntry } from './SaveScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
 import {
   TEXT_BOX_LAYOUT,
@@ -76,6 +77,7 @@ export class OverworldScene extends Phaser.Scene {
   private moveKeys!: Record<Direction, Phaser.Input.Keyboard.Key[]>;
   private interactKeys: Phaser.Input.Keyboard.Key[] = [];
   private relicKeys: Phaser.Input.Keyboard.Key[] = [];
+  private saveKeys: Phaser.Input.Keyboard.Key[] = [];
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
   private stepping = false;
@@ -150,6 +152,11 @@ export class OverworldScene extends Phaser.Scene {
 
     if (this.relicJustPressed()) {
       this.openRelicScreen();
+      return;
+    }
+
+    if (this.saveJustPressed()) {
+      this.openSaveScreen();
       return;
     }
 
@@ -310,6 +317,7 @@ export class OverworldScene extends Phaser.Scene {
       // 키보드가 없는 환경(터치 전용 등)에서도 씬 자체는 떠야 한다.
       this.moveKeys = { up: [], down: [], left: [], right: [] };
       this.relicKeys = [];
+      this.saveKeys = [];
       return;
     }
 
@@ -322,6 +330,7 @@ export class OverworldScene extends Phaser.Scene {
     };
     this.interactKeys = [key('SPACE'), key('ENTER')];
     this.relicKeys = [key('R')];
+    this.saveKeys = [key('S')];
   }
 
   /**
@@ -334,6 +343,28 @@ export class OverworldScene extends Phaser.Scene {
 
   private relicJustPressed(): boolean {
     return this.relicKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private saveJustPressed(): boolean {
+    return this.saveKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  /** 세이브 화면. 지금 선 자리를 저장 위치로 넘긴다 (T-038). */
+  private openSaveScreen(): void {
+    this.leaving = true;
+    this.scene.start('save', {
+      mode: 'save',
+      location: {
+        mapId: this.mapId,
+        x: this.walker.position.x,
+        y: this.walker.position.y,
+        facing: this.walker.facing,
+      },
+      returnTo: {
+        mapId: this.mapId,
+        arrival: { position: this.walker.position, facing: this.walker.facing },
+      },
+    } satisfies SaveEntry);
   }
 
   /**

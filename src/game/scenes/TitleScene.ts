@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
 import { markScene } from '../domState.js';
+import { resetParty } from '../partyStore.js';
+import { resetClock, startClock } from '../playtime.js';
+import { browserStorage, readAllSlots } from '../save/storage.js';
+import type { SaveEntry } from './SaveScene.js';
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -43,7 +47,27 @@ export class TitleScene extends Phaser.Scene {
       repeat: -1,
     });
 
+    // 이어할 세이브가 있을 때만 안내한다. 없는데 띄우면 눌러보고 빈 화면을 만난다.
+    const resumable = readAllSlots(browserStorage()).some((slot) => slot.kind === 'ok');
+    if (resumable) {
+      this.add
+        .text(width / 2, height - 44, 'C — 이어하기', {
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          color: '#7fc98a',
+        })
+        .setOrigin(0.5);
+
+      this.input.keyboard?.once('keydown-C', () => {
+        this.scene.start('save', { mode: 'load' } satisfies SaveEntry);
+      });
+    }
+
     this.input.keyboard?.once('keydown-ENTER', () => {
+      // 새로 시작한다. 이전 회차의 상태가 남아 있으면 새 게임이 아니다.
+      resetParty();
+      resetClock();
+      startClock(Date.now());
       this.scene.start('overworld');
     });
   }
