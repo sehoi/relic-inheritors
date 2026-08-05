@@ -27,6 +27,13 @@ import {
   type Skill,
 } from './skill.js';
 import {
+  applyItemEffect,
+  consume,
+  itemBlockReason,
+  type Inventory,
+  type Item,
+} from './item.js';
+import {
   addAilment,
   confusionHits,
   hasAilment,
@@ -85,6 +92,8 @@ export interface BattleState {
   /** RNG 상태. 세이브·로그에 남기면 전투를 그 지점부터 재현할 수 있다. */
   readonly rngState: number;
   readonly outcome: BattleOutcome;
+  /** 파티 소지품. 전투 중 소비되며 밖으로도 이어진다 (관리는 M4 거점). */
+  readonly inventory: Inventory;
 }
 
 /** 기본 공격의 규격. 스킬은 T-016 에서 자체 `AttackSpec` 을 갖는다. */
@@ -99,6 +108,12 @@ export type Command =
       readonly actor: ActorId;
       readonly target: ActorId;
       readonly skill: Skill;
+    }
+  | {
+      readonly type: 'item';
+      readonly actor: ActorId;
+      readonly target: ActorId;
+      readonly item: Item;
     }
   | { readonly type: 'guard'; readonly actor: ActorId }
   | { readonly type: 'flee'; readonly actor: ActorId };
@@ -123,6 +138,13 @@ export type BattleEvent =
     }
   | { readonly type: 'heal'; readonly target: ActorId; readonly amount: number }
   | { readonly type: 'skillUsed'; readonly actor: ActorId; readonly skill: string }
+  | {
+      readonly type: 'itemUsed';
+      readonly actor: ActorId;
+      readonly target: ActorId;
+      readonly item: string;
+    }
+  | { readonly type: 'revive'; readonly actor: ActorId }
   /** 침식이 한계를 넘어 제어를 잃었다. 뒤따르는 damage 의 대상은 아군일 수도 있다. */
   | { readonly type: 'overload'; readonly actor: ActorId }
   | { readonly type: 'erosion'; readonly actor: ActorId; readonly value: number }
@@ -216,6 +238,7 @@ export function createBattle(
   actors: readonly BattleActor[],
   seed: number,
   tuning: BattleTuning,
+  inventory: Inventory = {},
 ): BattleState {
   if (actors.length === 0) {
     throw new RangeError('전투에 참가자가 없습니다.');
@@ -230,6 +253,7 @@ export function createBattle(
     queue,
     rngState: rng.getState(),
     outcome: battleOutcome(actors),
+    inventory,
   };
 }
 
@@ -306,6 +330,7 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
 
   // 방어는 다음 자기 턴이 시작될 때 풀린다.
   let actors = replaceActor(state.actors, { ...acting, guarding: false });
+  let inventory = state.inventory;
   let fled = false;
 
   /** 한 대상에게 피해를 입히고 이벤트를 쌓는다. 공격·스킬·폭주가 공유한다. */
@@ -370,7 +395,7 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     actors = replaceActor(actors, relieved);
     events.push({ type: 'erosion', actor: acting.id, value: relieved.erosion });
 
-    return finishTurn(state, actors, events, rng, tuning, false);
+    return finishTurn(state, actors, events, rng, tuning, false, inventory);
   }
 
   // ── 행동 불가 ───────────────────────────────────────────────────────────
@@ -378,7 +403,7 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
   const blockedBy = incapacitatedBy(acting, rng, tuning.ailment);
   if (blockedBy !== undefined) {
     events.push({ type: 'ailmentBlocked', actor: acting.id, kind: blockedBy });
-    return finishTurn(state, actors, events, rng, tuning, false);
+    return finishTurn(state, actors, events, rng, tuning, false, inventory);
   }
 
   switch (command.type) {
@@ -388,6 +413,41 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     case 'guard': {
       actors = replaceActor(actors, { ...acting, guarding: true });
       events.push({ type: 'guard', actor: acting.id });
+      break;
+    }
+
+    case 'item': {
+      // 부활 아이템은 쓰러진 대상을 노리므로 `livingTarget` 을 쓰지 않는다.
+      const target = actors.find((a) => a.id === command.target);
+      if (target === undefined) {
+        throw new Error(`대상 "${command.target}" 가 전투에 없습니다.`);
+      }
+
+      const blocked = itemBlockReason(inventory, command.item, target);
+      if (blocked !== undefined) {
+        throw new Error(`"${command.item.name}" 을(를) 쓸 수 없습니다: ${blocked}`);
+      }
+
+      const outcome = applyItemEffect(target, command.item);
+      actors = replaceActor(actors, outcome.actor);
+      inventory = consume(inventory, command.item.id);
+
+      events.push({
+        type: 'itemUsed',
+        actor: acting.id,
+        target: target.id,
+        item: command.item.id,
+      });
+      if (outcome.revived) events.push({ type: 'revive', actor: target.id });
+      if (outcome.healed > 0) {
+        events.push({ type: 'heal', target: target.id, amount: outcome.healed });
+      }
+      for (const kind of outcome.cured) {
+        events.push({ type: 'ailmentEnded', actor: target.id, kind });
+      }
+      if (outcome.cleansed > 0) {
+        events.push({ type: 'erosion', actor: target.id, value: outcome.actor.erosion });
+      }
       break;
     }
 
@@ -440,7 +500,7 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     }
   }
 
-  return finishTurn(state, actors, events, rng, tuning, fled);
+  return finishTurn(state, actors, events, rng, tuning, fled, inventory);
 }
 
 /** 턴을 닫고 큐·라운드·승패를 정리한다. 정상 행동과 폭주가 공유한다. */
@@ -451,6 +511,7 @@ function finishTurn(
   rng: Rng,
   tuning: BattleTuning,
   fled: boolean,
+  inventory: Inventory,
 ): StepResult {
   const actingId = state.queue[0] as ActorId;
   let actors = actorsIn;
@@ -495,7 +556,7 @@ function finishTurn(
   }
 
   return {
-    state: { round, actors, queue, rngState: rng.getState(), outcome },
+    state: { round, actors, queue, rngState: rng.getState(), outcome, inventory },
     events,
   };
 }
