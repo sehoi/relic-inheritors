@@ -16,6 +16,14 @@
         "url": "https://kenney.nl/assets/tiny-dungeon",
         "license": "CC0-1.0"
       }
+    },
+    {
+      "dir": "assets/kenney_roguelike-characters",
+      "source": {
+        "name": "Kenney Roguelike Characters",
+        "url": "https://kenney.nl/assets/roguelike-characters",
+        "license": "CC0-1.0"
+      }
     }
   ],
   "entries": [
@@ -32,6 +40,13 @@
       "kind": "tileset",
       "usage": "유적 던전 타일맵. 여백 없는 시트라 frame 만으로 자를 수 있다",
       "frame": { "width": 16, "height": 16 }
+    },
+    {
+      "key": "chars-roguelike",
+      "path": "assets/kenney_roguelike-characters/Spritesheet/roguelikeChar_transparent.png",
+      "kind": "spritesheet",
+      "usage": "사람 스프라이트. 파티·NPC 가 전부 여기서 나온다. 54x12 격자, 타일 사이 1px 여백. 정면 한 방향뿐이라 4방향 걷기는 불가",
+      "frame": { "width": 16, "height": 16, "spacing": 1 }
     }
   ]
 }

@@ -10,6 +10,14 @@ import {
   validateDialogueScript,
 } from '../../src/core/dialogue/index.js';
 import { DIALOGUE_SCRIPTS, dialogueScript } from '../../src/data/dialogue.js';
+import { createAssetCatalog, parseAssetIndex } from '../../src/core/assets/index.js';
+import {
+  CHARACTER_FRAMES,
+  CHARACTER_SHEET,
+  PARTY_PORTRAITS,
+  PORTRAITS,
+  portraitOf,
+} from '../../src/data/characters.js';
 import { NPCS_BY_MAP } from '../../src/data/npcs.js';
 import { PORTALS_BY_MAP } from '../../src/data/portals.js';
 import { ZONES_BY_MAP, zonesForMap } from '../../src/data/zones.js';
@@ -185,22 +193,67 @@ describe('NPC 배치', () => {
     expect(problems, problems.join('\n')).toEqual([]);
   });
 
-  it('모든 NPC 가 존재하는 대화와 유효한 타일을 가리킨다', () => {
+  it('모든 NPC 가 존재하는 대화와 유효한 프레임을 가리킨다', () => {
     const problems: string[] = [];
 
     for (const id of MAP_IDS) {
-      const tileCount = mapOf(id).tilesets[0]?.tileCount ?? 0;
       for (const npc of NPCS_BY_MAP[id] ?? []) {
         if (DIALOGUE_SCRIPTS[npc.dialogueId] === undefined) {
           problems.push(`${id}/${npc.id}: 없는 대화 "${npc.dialogueId}"`);
         }
-        if (npc.tile < 0 || npc.tile >= tileCount) {
-          problems.push(`${id}/${npc.id}: 타일 ${npc.tile} 이 범위 밖`);
+        // 사람은 전부 `chars-roguelike` 시트에서 나온다 (`data/characters.ts`).
+        if (npc.tile < 0 || npc.tile >= CHARACTER_FRAMES) {
+          problems.push(`${id}/${npc.id}: 프레임 ${npc.tile} 이 범위 밖 (0~${CHARACTER_FRAMES - 1})`);
         }
       }
     }
 
     expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it('NPC 마다 다르게 생겼다', () => {
+    // 같은 얼굴이 둘이면 이름표를 읽기 전까지 누구인지 알 수 없다.
+    for (const id of MAP_IDS) {
+      const frames = (NPCS_BY_MAP[id] ?? []).map((npc) => npc.tile);
+      expect(new Set(frames).size, id).toBe(frames.length);
+    }
+  });
+});
+
+describe('인물 스프라이트', () => {
+  it('선언한 격자가 실제 시트 크기와 맞는다', () => {
+    // 격자를 잘못 적으면 화면이 비지 않고 **한 칸씩 밀린 그림**이 나온다.
+    // 에셋이 없을 때보다 알아채기 어려우므로 여기서 못을 박는다.
+    const entry = createAssetCatalog(
+      parseAssetIndex(JSON.parse(readFileSync(join(process.cwd(), 'assets/index.json'), 'utf8'))),
+    ).get(CHARACTER_SHEET.key);
+
+    const png = readFileSync(join(process.cwd(), entry.path));
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+
+    const spacing = entry.kind === 'spritesheet' || entry.kind === 'tileset' ? (entry.frame.spacing ?? 0) : 0;
+    const cell = 16 + spacing;
+
+    expect(Math.floor((width + spacing) / cell), '열 수').toBe(CHARACTER_SHEET.columns);
+    expect(Math.floor((height + spacing) / cell), '행 수').toBe(CHARACTER_SHEET.rows);
+  });
+
+  it('파티원마다 얼굴이 다르다', () => {
+    const frames = Object.values(PARTY_PORTRAITS);
+    expect(new Set(frames).size).toBe(frames.length);
+  });
+
+  it('모든 초상이 시트 범위 안이다', () => {
+    for (const [name, frame] of Object.entries(PORTRAITS)) {
+      expect(frame, name).toBeGreaterThanOrEqual(0);
+      expect(frame, name).toBeLessThan(CHARACTER_FRAMES);
+    }
+  });
+
+  it('모르는 액터도 사람으로 그려진다 (빈 칸이 되지 않는다)', () => {
+    expect(portraitOf('nobody')).toBeGreaterThanOrEqual(0);
+    expect(portraitOf('nobody')).toBeLessThan(CHARACTER_FRAMES);
   });
 });
 

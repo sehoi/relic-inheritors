@@ -1,8 +1,9 @@
 import type { Occupant } from '../core/world/interaction.js';
+import { PORTRAITS } from './characters.js';
 import type { MapId } from './maps.js';
 
 export interface Npc extends Occupant {
-  /** `tiles-dungeon` 시트의 프레임 번호. 캐릭터 타일은 84번대부터다. */
+  /** `chars-roguelike` 시트의 프레임 번호. `data/characters.ts` 가 번호를 안다. */
   readonly tile: number;
   readonly dialogueId: string;
 }
@@ -16,9 +17,10 @@ export interface Npc extends Occupant {
  */
 export const NPCS_BY_MAP: Readonly<Partial<Record<MapId, readonly Npc[]>>> = {
   'ruin-entrance': [
-    { id: 'scholar', position: { x: 8, y: 4 }, tile: 84, dialogueId: 'ruin-scholar' },
-    { id: 'guard', position: { x: 13, y: 10 }, tile: 96, dialogueId: 'ruin-guard' },
-    { id: 'drifter', position: { x: 4, y: 9 }, tile: 99, dialogueId: 'ruin-drifter' },
+    // 겉모습이 역할을 말하게 한다 — 이름표 없이도 누구에게 말을 걸지 고를 수 있어야 한다.
+    { id: 'scholar', position: { x: 8, y: 4 }, tile: PORTRAITS.elder, dialogueId: 'ruin-scholar' },
+    { id: 'guard', position: { x: 13, y: 10 }, tile: PORTRAITS.bare, dialogueId: 'ruin-guard' },
+    { id: 'drifter', position: { x: 4, y: 9 }, tile: PORTRAITS.teal, dialogueId: 'ruin-drifter' },
   ],
 
   // 지하 1층에는 아직 아무도 없다. 사람이 내려올 곳이 아니다.

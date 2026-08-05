@@ -12,6 +12,7 @@
 |---|---|---|---|
 | Kenney Tiny Town | https://kenney.nl/assets/tiny-town | CC0-1.0 | `kenney_tiny-town/License.txt` |
 | Kenney Tiny Dungeon | https://kenney.nl/assets/tiny-dungeon | CC0-1.0 | `kenney_tiny-dungeon/License.txt` |
+| Kenney Roguelike Characters | https://kenney.nl/assets/roguelike-characters | CC0-1.0 | `kenney_roguelike-characters/License.txt` |
 
 CC0-1.0은 저작자 표시 의무가 없지만, **출처를 아는 것과 모르는 것은 다르다.**
 나중에 라이선스를 재확인하거나 같은 작가의 에셋을 더 찾을 때 필요하다.

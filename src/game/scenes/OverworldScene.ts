@@ -3,6 +3,7 @@ import { dialogueScript } from '../../data/dialogue.js';
 import { npcsForMap, type Npc } from '../../data/npcs.js';
 import { portalsForMap } from '../../data/portals.js';
 import { zonesForMap } from '../../data/zones.js';
+import { CHARACTER_SHEET, PLAYER_PORTRAIT } from '../../data/characters.js';
 import { MAP_NAMES, STARTING_MAP, type MapId } from '../../data/maps.js';
 import type { TileMap } from '../../core/world/tilemap.js';
 import {
@@ -42,14 +43,6 @@ import { markCamera, markDialogue, markMap, markScene, markWalker, markZone } fr
 
 /** 한 칸 이동에 걸리는 시간. 이 동안 입력은 무시된다. */
 const STEP_DURATION = 110;
-
-/**
- * `tiles-dungeon` 시트의 주인공 프레임.
- *
- * NPC(84·96·99)·적(108·122)과 겹치지 않으면서 **가장 눈에 띄는 칸**을 골랐다.
- * 스크린샷으로 진행을 확인하는 이상, 주변에 묻히는 주인공은 없는 것과 같다.
- */
-const PLAYER_TILE = 110;
 
 /** 씬을 다시 시작할 때 넘기는 값. 층을 오갈 때 어디로 내려설지 알려준다. */
 export interface OverworldEntry {
@@ -361,7 +354,7 @@ export class OverworldScene extends Phaser.Scene {
     return this.add.image(
       npc.position.x * this.map.tileWidth + this.map.tileWidth / 2,
       npc.position.y * this.map.tileHeight + this.map.tileHeight / 2,
-      'tiles-dungeon',
+      CHARACTER_SHEET.key,
       npc.tile,
     );
   }
@@ -369,11 +362,11 @@ export class OverworldScene extends Phaser.Scene {
   /**
    * 주인공.
    *
-   * Tiny Dungeon 의 캐릭터 타일을 쓴다 (ADR-006 색인 경유). **한 방향뿐**이라
+   * 사람은 전부 `chars-roguelike` 에서 나온다 (`data/characters.ts`). **정면 한 방향뿐**이라
    * 어디를 보고 있는지는 여전히 표식이 말해준다 — 4방향 걷기 프레임은 백로그의 사람 몫이다.
    */
   private createPlayerView(): Phaser.GameObjects.Container {
-    const body = this.add.image(0, 0, 'tiles-dungeon', PLAYER_TILE);
+    const body = this.add.image(0, 0, CHARACTER_SHEET.key, PLAYER_PORTRAIT);
     this.facingPip = this.add.rectangle(0, 0, 4, 4, 0xf2e6c9);
     this.facingPip.setStrokeStyle(1, 0x2a1e14);
 
