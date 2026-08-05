@@ -6,6 +6,7 @@ import {
   choiceBuildSize,
   enumerateBuilds,
   exactBuilds,
+  exclusionPenalty,
   rankSpread,
   shareInBand,
   thinBuilds,
@@ -84,6 +85,20 @@ describe('기구 검사 · 불변식에 이빨이 있는가', () => {
       rankSpread(scored.map((row) => row.winRate), RELIC_INVARIANTS.dominanceRank),
       `기구가 지배 전략을 놓쳤습니다:\n  ${describeRates(scored)}`,
     ).toBeGreaterThan(RELIC_INVARIANTS.maxRankSpread);
+  });
+
+  it('필수 유물을 심으면 불변식 4b 가 잡아낸다', () => {
+    // 채택률 하한(불변식 4)으로는 이걸 못 잡는다. `king` 은 채택률이 높아서 통과해 버린다.
+    const scored = scoreBuilds({
+      weak: { ...base, id: 'weak', statMods: { mag: 1 } },
+      mid: { ...base, id: 'mid', statMods: { mag: 4 } },
+      king: { ...base, id: 'king', statMods: { mag: 40, atk: 40, def: 20, maxHp: 60 } },
+    });
+
+    const penalty = exclusionPenalty(scored, 'king');
+
+    expect(penalty, `king 을 뺀 최고 조합과의 차이:\n  ${describeRates(scored)}`).toBeDefined();
+    expect(penalty ?? 0).toBeGreaterThan(RELIC_INVARIANTS.maxExclusionPenalty);
   });
 
   it('사장된 유물을 심으면 불변식 4 가 잡아낸다', () => {
@@ -190,6 +205,23 @@ describe('유물 조합 (data/relics.ts)', () => {
     expect(
       dead,
       `사장된 유물: ${dead.join(', ')}\n좋은 조합: ${good.map((b) => b.id).join(' | ')}`,
+    ).toEqual([]);
+  });
+
+  it('불변식 4b · 어느 유물도 필수가 아니다', () => {
+    // 불변식 4 의 반대쪽 구멍. 좋은 조합 전부에 끼는 유물이 있으면 슬롯 하나가 고정된 것이고,
+    // 조합 설계의 폭이 그만큼 줄어든다.
+    const mandatory = Object.keys(RELICS)
+      .map((id) => ({ id, penalty: exclusionPenalty(scored, id) }))
+      .filter(
+        (entry): entry is { id: string; penalty: number } =>
+          entry.penalty !== undefined && entry.penalty > RELIC_INVARIANTS.maxExclusionPenalty,
+      )
+      .map((entry) => `${entry.id}: 빼면 ${(entry.penalty * 100).toFixed(1)}%p 손해`);
+
+    expect(
+      mandatory,
+      `사실상 필수인 유물이 있습니다:\n  ${mandatory.join('\n  ')}\n${describeRates(scored)}`,
     ).toEqual([]);
   });
 

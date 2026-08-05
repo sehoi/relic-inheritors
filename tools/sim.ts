@@ -15,6 +15,7 @@ import {
   adoptionRates,
   choiceBuildSize,
   exactBuilds,
+  exclusionPenalty,
   rankSpread,
   shareInBand,
   thinBuilds,
@@ -143,5 +144,16 @@ console.log(
     .map(([id, rate]) => `${id} ${pct(rate)}`)
     .join(', ')}`,
 );
+
+// 채택률의 반대쪽 — 빼면 얼마나 손해인가. 높으면 사실상 필수 유물이다 (T-035).
+console.log(
+  `\n필수도(상한 ${pct(RELIC_INVARIANTS.maxExclusionPenalty)}, 빼고 짠 최고 조합과의 차이):`,
+);
+for (const relicId of relicIds) {
+  const penalty = exclusionPenalty(scored, relicId);
+  console.log(
+    `  ${pad(penalty === undefined ? '측정 불가' : pct(penalty), 10)}  ${relicId}`,
+  );
+}
 
 console.log('\n판정은 `npm run test` 의 tests/balance 가 한다. 여기 숫자는 참고용이다.');

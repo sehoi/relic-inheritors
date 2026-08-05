@@ -110,9 +110,11 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     tags: ['ember', 'hollow'],
     statMods: { mag: 7, maxMp: 5, def: -2 },
     actives: [
-      { skill: skill('ember-burst'), unlockRank: 0 },
-      // 공허 쪽 액티브는 잠겨 있다. 이 유물을 계속 쓸 이유가 여기서 나온다 (GDD §5.3).
-      { skill: skill('hollow-bite'), unlockRank: 2 },
+      { skill: skill('hollow-bite'), unlockRank: 0 },
+      // **가장 센 액티브는 0단계에 두지 않는다.** 처음에 이걸 0단계에 뒀더니
+      // 잿빛 등 없이는 좋은 조합을 짤 수 없게 됐다 — 빼면 26.7%p 손해였다 (불변식 4b).
+      // 위력 170은 다른 유물의 0단계 액티브(110~152)와 급이 달랐다.
+      { skill: skill('ember-burst'), unlockRank: 2 },
     ],
     erosionFactor: 1.2,
     lore: '불을 담는 그릇인데, 안쪽이 비어 있는 쪽이 더 밝다.',
