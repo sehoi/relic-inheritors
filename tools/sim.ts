@@ -21,7 +21,7 @@ import {
   thinBuilds,
   topBuilds,
 } from '../src/core/relic/builds.js';
-import { SLOTS_PER_MEMBER } from '../src/core/relic/index.js';
+import { TOTAL_SLOTS } from '../src/data/party.js';
 import { BATTLE_TUNING } from '../src/data/battle.js';
 import { BUILD_SWEEP, RELIC_INVARIANTS } from '../src/data/invariants.js';
 import { RELICS, relic } from '../src/data/relics.js';
@@ -104,7 +104,7 @@ console.log(
 );
 
 const relicIds = Object.keys(RELICS);
-const buildSize = choiceBuildSize(relicIds.length, SLOTS_PER_MEMBER * 2);
+const buildSize = choiceBuildSize(relicIds.length, TOTAL_SLOTS);
 const allBuilds = exactBuilds(relicIds, buildSize);
 const builds = thinBuilds(allBuilds, BUILD_SWEEP.maxBuilds);
 

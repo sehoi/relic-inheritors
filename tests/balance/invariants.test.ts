@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { seedRange, simulateMany, type SimSetup } from '../../src/core/battle/simulate.js';
 import type { Relic } from '../../src/core/relic/index.js';
 import { BATTLE_TUNING } from '../../src/data/battle.js';
+import { BATTLE_LENGTH } from '../../src/data/invariants.js';
 import { relic } from '../../src/data/relics.js';
 import {
   BUILD_SKEWS,
@@ -29,17 +30,29 @@ const run = (setup: SimSetup): ReturnType<typeof simulateMany> =>
 
 describe('불변식 5 · 전투 길이', () => {
   // GDD 의 "턴"은 파티 전원이 한 번씩 행동하는 라운드를 뜻한다고 본다.
-  // 개별 행동 수로 재면 파티 인원수에 비례해 의미가 흐려진다.
-  it.each([...SAMPLE_LEVELS])('잡몹전 Lv%i 은 3~6 라운드다', (level) => {
+  //
+  // ⚠️ **라운드 수는 파티 인원에 매인 단위다.** 절대값은 인원이 바뀌면 다시 재야 하고,
+  // 실제로 T-049a 에서 그렇게 됐다. 그래서 아래에 인원과 무관한 비율 불변식을 함께 둔다.
+  it.each([...SAMPLE_LEVELS])('잡몹전 Lv%i 은 짧다', (level) => {
     const summary = run(mobFight(level));
-    expect(summary.avgRounds).toBeGreaterThanOrEqual(3);
-    expect(summary.avgRounds).toBeLessThanOrEqual(6);
+    expect(summary.avgRounds, `Lv${level}`).toBeGreaterThanOrEqual(3);
+    expect(summary.avgRounds, `Lv${level}`).toBeLessThanOrEqual(BATTLE_LENGTH.maxMobRounds);
   });
 
-  it.each([...SAMPLE_LEVELS])('보스전 Lv%i 은 12~25 라운드다', (level) => {
+  it.each([...SAMPLE_LEVELS])('보스전 Lv%i 은 길다', (level) => {
     const summary = run(bossFight(level));
-    expect(summary.avgRounds).toBeGreaterThanOrEqual(12);
-    expect(summary.avgRounds).toBeLessThanOrEqual(25);
+    expect(summary.avgRounds, `Lv${level}`).toBeGreaterThanOrEqual(BATTLE_LENGTH.minBossRounds);
+    expect(summary.avgRounds, `Lv${level}`).toBeLessThanOrEqual(BATTLE_LENGTH.maxBossRounds);
+  });
+
+  it.each([...SAMPLE_LEVELS])('Lv%i 에서 보스전이 잡몹전보다 확실히 길다', (level) => {
+    // **인원이 바뀌어도 뜻이 변하지 않는 형태다.** 짧으면 보스가 그냥 센 잡몹이다.
+    const mob = run(mobFight(level)).avgRounds;
+    const boss = run(bossFight(level)).avgRounds;
+
+    expect(boss / mob, `잡몹 ${mob.toFixed(1)}R vs 보스 ${boss.toFixed(1)}R`).toBeGreaterThanOrEqual(
+      BATTLE_LENGTH.minBossToMobRatio,
+    );
   });
 
   it('끝나지 않는 전투가 없다', () => {
