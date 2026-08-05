@@ -107,6 +107,11 @@ export function markSites(remaining: number): void {
   document.body.dataset['sites'] = String(remaining);
 }
 
+/** 파티 레벨 (T-044). 전투를 이겨 레벨이 올랐는지 스모크가 이걸로 판정한다. */
+export function markLevel(level: number): void {
+  document.body.dataset['level'] = String(level);
+}
+
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
 export function markDialogue(session: DialogueSession | undefined): void {
   document.body.dataset['dialogue'] =

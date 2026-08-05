@@ -255,6 +255,13 @@ test('탐색 중 인카운터가 발생하고 전투 후 제자리로 돌아온�
     await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance');
     // 전투가 벌어진 자리에서 이어간다.
     await expect(page.locator('body')).toHaveAttribute('data-player', encounterTile);
+
+    // 이겼으면 레벨이 올라 있어야 한다 (T-044). 첫 레벨업은 첫 전투에서 온다 —
+    // 안 오르면 플레이어는 자기가 나아지는지 알 수 없다.
+    if (outcome === 'victory') {
+      const level = Number(await page.locator('body').getAttribute('data-level'));
+      expect(level, '이겼는데 레벨이 오르지 않았다').toBeGreaterThan(1);
+    }
   }
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);

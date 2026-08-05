@@ -21,6 +21,7 @@ import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markScene, type BattlePhase } from '../domState.js';
 import {
+  gainExp,
   getInventory,
   partyForBattle,
   partySkills,
@@ -29,6 +30,8 @@ import {
   saveInventory,
   saveParty,
 } from '../partyStore.js';
+import { expForEnemy } from '../../core/progress/level.js';
+import { EXP_REWARD } from '../../data/progression.js';
 import { Gauge } from '../ui/Gauge.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -354,18 +357,49 @@ export class BattleScene extends Phaser.Scene {
 
   private finish(): void {
     this.setPhase('over', this.state.outcome);
-    this.message(this.state.outcome === 'victory' ? '승리!' : this.state.outcome === 'fled' ? '이탈' : '전멸…');
     this.renderMenu();
 
     // 살아남았으면 HP·MP·침식·소지품이 전투 밖으로 이어진다 (GDD §5.4).
     if (this.state.outcome === 'defeat') {
+      this.message('전멸…');
       resetParty();
-    } else {
-      saveParty(this.state.actors);
-      saveInventory(this.state.inventory);
-      // 쓴 스킬만큼 유물에 숙련도가 쌓인다 (GDD §5.3).
-      recordSkillUses(this.skillUses);
+      return;
     }
+
+    saveParty(this.state.actors);
+    saveInventory(this.state.inventory);
+    // 쓴 스킬만큼 유물에 숙련도가 쌓인다 (GDD §5.3).
+    recordSkillUses(this.skillUses);
+
+    if (this.state.outcome !== 'victory') {
+      this.message('이탈');
+      return;
+    }
+
+    this.message(this.awardExp());
+  }
+
+  /**
+   * 경험치를 준다. 화면에 띄울 문구를 돌려준다 (T-044).
+   *
+   * **도망친 전투는 주지 않는다.** 주면 도망이 안전한 경험치벌이가 되고,
+   * 그러면 조합을 고민할 이유가 사라진다.
+   *
+   * 레벨이 오르면 완전 회복된다 — 유적 안에서 회복할 방법이 이것뿐이다 (`partyStore.gainExp`).
+   */
+  private awardExp(): string {
+    const defeated = this.state.actors.filter((actor) => actor.side === 'enemy' && !isAlive(actor));
+    const gained = defeated.reduce(
+      (sum) => sum + expForEnemy(this.encounter.level, EXP_REWARD),
+      0,
+    );
+
+    const levelled = gainExp(gained);
+    if (levelled === undefined) return `승리!  경험치 +${gained}`;
+
+    // 레벨이 올랐으면 회복된 상태를 다시 저장한다 — 아래에서 전투 밖으로 이어지는 값이다.
+    saveParty(partyForBattle());
+    return `승리!  경험치 +${gained}   레벨 ${levelled}!  기운을 되찾았다`;
   }
 
   /** 전투가 끝난 뒤 나갈 곳. 전멸이면 타이틀, 아니면 왔던 자리로 돌아간다. */
