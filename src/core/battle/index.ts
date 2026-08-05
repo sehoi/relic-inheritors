@@ -12,6 +12,7 @@
  */
 
 import { createRng, restoreRng, type Rng } from '../rng/index.js';
+import type { Element, ElementAffinity } from './damage.js';
 
 export type ActorId = string;
 export type Side = 'party' | 'enemy';
@@ -36,6 +37,8 @@ export interface BattleActor {
   readonly mp: number;
   /** 침식. 강한 유물 스킬을 쓸수록 쌓인다 (GDD §5.4). 임계 처리는 T-016. */
   readonly erosion: number;
+  /** 속성별 피해 배율. 없으면 1.0. 적이 스스로 약점을 선언하는 방식이다 — `damage.ts` 참조. */
+  readonly affinity?: ElementAffinity;
 }
 
 export function isAlive(actor: BattleActor): boolean {
@@ -58,10 +61,26 @@ export interface BattleState {
 /** 지금은 턴 넘기기만 있다. 공격·방어·도망은 T-015, 스킬·아이템은 T-016. */
 export type Command = { readonly type: 'pass'; readonly actor: ActorId };
 
+/**
+ * 이벤트 로그는 곧 애니메이션 스크립트다 (T-020 이 이걸 재생한다).
+ * 그래서 "무슨 일이 일어났는가" 를 연출에 필요한 만큼 담되, 상태 자체는 담지 않는다.
+ */
 export type BattleEvent =
   | { readonly type: 'roundStart'; readonly round: number }
   | { readonly type: 'turnStart'; readonly actor: ActorId }
   | { readonly type: 'turnEnd'; readonly actor: ActorId }
+  | {
+      readonly type: 'damage';
+      readonly source: ActorId;
+      readonly target: ActorId;
+      readonly amount: number;
+      readonly critical: boolean;
+      readonly element: Element;
+      /** 1 보다 크면 약점, 작으면 저항. 연출을 바꾸는 근거다. */
+      readonly elementMod: number;
+    }
+  | { readonly type: 'heal'; readonly target: ActorId; readonly amount: number }
+  | { readonly type: 'death'; readonly actor: ActorId }
   | { readonly type: 'battleEnd'; readonly outcome: Exclude<BattleOutcome, 'ongoing'> }
   | { readonly type: 'message'; readonly text: string };
 
