@@ -1,0 +1,210 @@
+import { describe, expect, it } from 'vitest';
+import {
+  actorById,
+  battleOutcome,
+  createBattle,
+  currentActor,
+  isAlive,
+  step,
+  type BattleActor,
+  type BattleState,
+  type TurnOrderTuning,
+} from '../../src/core/battle/index.js';
+
+const TUNING: TurnOrderTuning = { jitter: 0.15 };
+const NO_JITTER: TurnOrderTuning = { jitter: 0 };
+
+const actor = (
+  id: string,
+  side: BattleActor['side'],
+  agi: number,
+  hp = 100,
+): BattleActor => ({
+  id,
+  name: id,
+  side,
+  stats: { maxHp: 100, maxMp: 20, atk: 10, def: 5, mag: 8, res: 5, agi, luk: 5 },
+  hp,
+  mp: 20,
+  erosion: 0,
+});
+
+/** 민첩 격차가 커서 흔들림으로는 순서가 뒤집히지 않는 편성 */
+const roster = (): BattleActor[] => [
+  actor('hero', 'party', 30),
+  actor('mage', 'party', 10),
+  actor('slime', 'enemy', 20),
+];
+
+const runPass = (state: BattleState, tuning = TUNING): ReturnType<typeof step> => {
+  const acting = currentActor(state);
+  if (acting === undefined) throw new Error('행동할 액터가 없습니다.');
+  return step(state, { type: 'pass', actor: acting.id }, tuning);
+};
+
+describe('createBattle', () => {
+  it('민첩이 높은 순으로 큐를 만든다', () => {
+    const state = createBattle(roster(), 1, NO_JITTER);
+    expect(state.queue).toEqual(['hero', 'slime', 'mage']);
+    expect(state.round).toBe(1);
+    expect(state.outcome).toBe('ongoing');
+  });
+
+  it('참가자가 없으면 던진다', () => {
+    expect(() => createBattle([], 1, TUNING)).toThrow(RangeError);
+  });
+
+  it('죽은 액터는 큐에 들어가지 않는다', () => {
+    const state = createBattle([...roster(), actor('corpse', 'enemy', 99, 0)], 1, NO_JITTER);
+    expect(state.queue).not.toContain('corpse');
+  });
+
+  it('동점은 id 순으로 끊어 항상 같은 순서가 나온다', () => {
+    const tied = [actor('b', 'party', 10), actor('a', 'party', 10), actor('x', 'enemy', 10)];
+    expect(createBattle(tied, 7, NO_JITTER).queue).toEqual(['a', 'b', 'x']);
+  });
+});
+
+describe('결정론 (ADR-002)', () => {
+  it('같은 시드는 같은 전개를 낳는다', () => {
+    const run = (): string[] => {
+      let state = createBattle(roster(), 4821, TUNING);
+      const order: string[] = [];
+      for (let i = 0; i < 12; i += 1) {
+        order.push(state.queue[0] as string);
+        state = runPass(state).state;
+      }
+      return order;
+    };
+
+    expect(run()).toEqual(run());
+  });
+
+  it('rngState 로 전투를 이어받을 수 있다', () => {
+    let state = createBattle(roster(), 99, TUNING);
+    for (let i = 0; i < 5; i += 1) state = runPass(state).state;
+
+    // 상태를 그대로 복사해 이어가면 같은 전개가 나온다.
+    const resumed: BattleState = { ...state };
+    const a: string[] = [];
+    const b: string[] = [];
+    let s1 = state;
+    let s2 = resumed;
+    for (let i = 0; i < 8; i += 1) {
+      a.push(s1.queue[0] as string);
+      b.push(s2.queue[0] as string);
+      s1 = runPass(s1).state;
+      s2 = runPass(s2).state;
+    }
+    expect(a).toEqual(b);
+  });
+
+  it('흔들림이 민첩 격차를 뒤집지는 않는다', () => {
+    // 30 vs 10 은 15% 흔들림으로 뒤집히지 않아야 한다.
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const queue = createBattle(roster(), seed, TUNING).queue;
+      expect(queue.indexOf('hero'), `시드 ${seed}`).toBeLessThan(queue.indexOf('mage'));
+    }
+  });
+
+  it('흔들림이 0이면 시드와 무관하게 같은 순서다', () => {
+    const a = createBattle(roster(), 1, NO_JITTER).queue;
+    const b = createBattle(roster(), 12345, NO_JITTER).queue;
+    expect(a).toEqual(b);
+  });
+});
+
+describe('step', () => {
+  it('턴 시작·종료 이벤트를 낸다', () => {
+    const state = createBattle(roster(), 1, NO_JITTER);
+    const { events } = runPass(state);
+    expect(events).toEqual([
+      { type: 'turnStart', actor: 'hero' },
+      { type: 'turnEnd', actor: 'hero' },
+    ]);
+  });
+
+  it('큐를 하나씩 소비한다', () => {
+    let state = createBattle(roster(), 1, NO_JITTER);
+    expect(state.queue).toHaveLength(3);
+    state = runPass(state, NO_JITTER).state;
+    expect(state.queue).toEqual(['slime', 'mage']);
+  });
+
+  it('큐가 비면 다음 라운드를 시작한다', () => {
+    let state = createBattle(roster(), 1, NO_JITTER);
+    const firstEvents = runPass(state, NO_JITTER).events;
+    state = runPass(state, NO_JITTER).state;
+    state = runPass(state, NO_JITTER).state;
+
+    const third = runPass(state, NO_JITTER);
+    expect(third.state.round).toBe(2);
+    expect(third.state.queue).toHaveLength(3);
+    expect(third.events).toContainEqual({ type: 'roundStart', round: 2 });
+    expect(firstEvents).not.toContainEqual({ type: 'roundStart', round: 2 });
+  });
+
+  it('차례가 아닌 액터의 커맨드를 거부한다', () => {
+    const state = createBattle(roster(), 1, NO_JITTER);
+    expect(() => step(state, { type: 'pass', actor: 'mage' }, NO_JITTER)).toThrow(/지금 차례는/);
+  });
+
+  it('입력 상태를 변경하지 않는다', () => {
+    const state = createBattle(roster(), 1, NO_JITTER);
+    const before = [...state.queue];
+    runPass(state, NO_JITTER);
+    expect(state.queue).toEqual(before);
+  });
+
+  it('끝난 전투에서는 던진다', () => {
+    const wiped = [actor('hero', 'party', 30, 0), actor('slime', 'enemy', 20)];
+    const state = createBattle(wiped, 1, NO_JITTER);
+    expect(state.outcome).toBe('defeat');
+    expect(() => step(state, { type: 'pass', actor: 'slime' }, NO_JITTER)).toThrow(/이미 끝난/);
+  });
+});
+
+describe('battleOutcome', () => {
+  it('적이 전멸하면 승리', () => {
+    expect(battleOutcome([actor('hero', 'party', 10), actor('slime', 'enemy', 10, 0)])).toBe(
+      'victory',
+    );
+  });
+
+  it('파티가 전멸하면 패배', () => {
+    expect(battleOutcome([actor('hero', 'party', 10, 0), actor('slime', 'enemy', 10)])).toBe(
+      'defeat',
+    );
+  });
+
+  it('양쪽이 동시에 전멸하면 패배로 본다 (살아남지 못했다면 이긴 것이 아니다)', () => {
+    expect(battleOutcome([actor('hero', 'party', 10, 0), actor('slime', 'enemy', 10, 0)])).toBe(
+      'defeat',
+    );
+  });
+
+  it('둘 다 살아 있으면 진행 중', () => {
+    expect(battleOutcome(roster())).toBe('ongoing');
+  });
+});
+
+describe('조회 도우미', () => {
+  const state = createBattle(roster(), 1, NO_JITTER);
+
+  it('id 로 찾는다', () => {
+    expect(actorById(state, 'mage').name).toBe('mage');
+  });
+
+  it('없는 id 는 참가자 목록과 함께 던진다', () => {
+    expect(() => actorById(state, 'ghost')).toThrow(/hero, mage, slime/);
+  });
+
+  it('현재 차례를 알려준다', () => {
+    expect(currentActor(state)?.id).toBe('hero');
+  });
+
+  it('isAlive 는 HP 로 판정한다', () => {
+    expect(isAlive(actor('x', 'party', 1, 1))).toBe(true);
+    expect(isAlive(actor('x', 'party', 1, 0))).toBe(false);
+  });
+});
