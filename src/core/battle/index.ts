@@ -26,6 +26,18 @@ import {
   type ErosionTuning,
   type Skill,
 } from './skill.js';
+import {
+  addAilment,
+  confusionHits,
+  hasAilment,
+  incapacitatedBy,
+  poisonDamage,
+  removeAilment,
+  tickAilments,
+  type Ailment,
+  type AilmentState,
+  type AilmentTuning,
+} from './status.js';
 
 export type ActorId = string;
 export type Side = 'party' | 'enemy';
@@ -54,6 +66,8 @@ export interface BattleActor {
   readonly affinity?: ElementAffinity;
   /** 방어 중인가. **다음 자기 턴이 시작될 때 풀린다.** 없으면 false. */
   readonly guarding?: boolean;
+  /** 걸려 있는 상태이상. 없으면 빈 목록으로 취급한다. */
+  readonly ailments?: readonly AilmentState[];
 }
 
 export function isAlive(actor: BattleActor): boolean {
@@ -112,6 +126,23 @@ export type BattleEvent =
   /** 침식이 한계를 넘어 제어를 잃었다. 뒤따르는 damage 의 대상은 아군일 수도 있다. */
   | { readonly type: 'overload'; readonly actor: ActorId }
   | { readonly type: 'erosion'; readonly actor: ActorId; readonly value: number }
+  | {
+      readonly type: 'ailmentApplied';
+      readonly actor: ActorId;
+      readonly kind: Ailment;
+      readonly turns: number;
+    }
+  | { readonly type: 'ailmentEnded'; readonly actor: ActorId; readonly kind: Ailment }
+  /** 상태이상으로 이번 턴을 잃었다. */
+  | { readonly type: 'ailmentBlocked'; readonly actor: ActorId; readonly kind: Ailment }
+  | {
+      readonly type: 'ailmentDamage';
+      readonly actor: ActorId;
+      readonly kind: Ailment;
+      readonly amount: number;
+    }
+  /** 혼란으로 대상이 뒤바뀌었다. 원래 대상이 아니라는 걸 연출로 알려야 한다. */
+  | { readonly type: 'confused'; readonly actor: ActorId; readonly target: ActorId }
   | { readonly type: 'guard'; readonly actor: ActorId }
   | { readonly type: 'flee'; readonly actor: ActorId; readonly success: boolean }
   | { readonly type: 'death'; readonly actor: ActorId }
@@ -147,6 +178,7 @@ export interface BattleTuning {
   readonly damage: DamageTuning;
   readonly flee: FleeTuning;
   readonly erosion: ErosionTuning;
+  readonly ailment: AilmentTuning;
 }
 
 /**
@@ -277,9 +309,14 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
   let fled = false;
 
   /** 한 대상에게 피해를 입히고 이벤트를 쌓는다. 공격·스킬·폭주가 공유한다. */
-  const strike = (target: BattleActor, attack: AttackSpec): void => {
+  const strike = (target: BattleActor, attack: AttackSpec): BattleActor => {
     const result = resolveDamage(acting, target, attack, rng, tuning.damage);
-    const hurt = applyDamage(target, result.amount);
+    let hurt = applyDamage(target, result.amount);
+
+    // 수면은 피격하면 깨어난다. 자고 있는 상대를 때려 굳히는 전략을 막는다.
+    const woke = hasAilment(hurt, 'sleep');
+    if (woke) hurt = removeAilment(hurt, 'sleep');
+
     actors = replaceActor(actors, hurt);
 
     events.push({
@@ -291,7 +328,23 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
       element: attack.element,
       elementMod: result.elementMod,
     });
+    if (woke) events.push({ type: 'ailmentEnded', actor: hurt.id, kind: 'sleep' });
     if (!isAlive(hurt)) events.push({ type: 'death', actor: hurt.id });
+
+    return hurt;
+  };
+
+  /** 혼란이면 대상이 무작위로 바뀐다. 플레이어가 고른 대상은 그와 별개로 검증한다. */
+  const resolveTarget = (intended: ActorId): BattleActor => {
+    const chosen = livingTarget(intended);
+    if (!confusionHits(acting, rng, tuning.ailment)) return chosen;
+
+    const candidates = actors.filter((a) => a.id !== acting.id && isAlive(a));
+    if (candidates.length === 0) return chosen;
+
+    const scrambled = rng.pick(candidates);
+    events.push({ type: 'confused', actor: acting.id, target: scrambled.id });
+    return scrambled;
   };
 
   const livingTarget = (id: ActorId): BattleActor => {
@@ -320,6 +373,14 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     return finishTurn(state, actors, events, rng, tuning, false);
   }
 
+  // ── 행동 불가 ───────────────────────────────────────────────────────────
+  // 수면·마비. 폭주 다음, 커맨드 처리 앞이다 — 우선순위는 GDD §6.2 참조.
+  const blockedBy = incapacitatedBy(acting, rng, tuning.ailment);
+  if (blockedBy !== undefined) {
+    events.push({ type: 'ailmentBlocked', actor: acting.id, kind: blockedBy });
+    return finishTurn(state, actors, events, rng, tuning, false);
+  }
+
   switch (command.type) {
     case 'pass':
       break;
@@ -331,12 +392,15 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     }
 
     case 'attack': {
-      strike(livingTarget(command.target), BASIC_ATTACK);
+      strike(resolveTarget(command.target), BASIC_ATTACK);
       break;
     }
 
     case 'skill': {
       // 자원 검사를 먼저 한다. 쓸 수 없는 스킬이 상태를 반쯤 바꿔놓고 실패하면 안 된다.
+      if (hasAilment(acting, 'silence')) {
+        throw new Error(`"${command.skill.name}" 를 쓸 수 없습니다: 침묵으로 유물이 잠겼다`);
+      }
       const blocked = skillBlockReason(acting, command.skill, tuning.erosion);
       if (blocked !== undefined) {
         throw new Error(`"${command.skill.name}" 를 쓸 수 없습니다: ${blocked}`);
@@ -346,8 +410,21 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
       actors = replaceActor(actors, paid);
 
       events.push({ type: 'skillUsed', actor: acting.id, skill: command.skill.id });
-      strike(livingTarget(command.target), command.skill.attack);
+      const struck = strike(resolveTarget(command.target), command.skill.attack);
       events.push({ type: 'erosion', actor: acting.id, value: paid.erosion });
+
+      const inflict = command.skill.inflict;
+      // 쓰러진 대상에게 상태이상을 거는 것은 의미가 없다.
+      if (inflict !== undefined && isAlive(struck) && rng.chance(inflict.chance)) {
+        const turns = inflict.turns ?? tuning.ailment.defaultTurns[inflict.kind];
+        actors = replaceActor(actors, addAilment(struck, inflict.kind, turns));
+        events.push({
+          type: 'ailmentApplied',
+          actor: struck.id,
+          kind: inflict.kind,
+          turns,
+        });
+      }
       break;
     }
 
@@ -369,13 +446,36 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
 /** 턴을 닫고 큐·라운드·승패를 정리한다. 정상 행동과 폭주가 공유한다. */
 function finishTurn(
   state: BattleState,
-  actors: readonly BattleActor[],
+  actorsIn: readonly BattleActor[],
   events: BattleEvent[],
   rng: Rng,
   tuning: BattleTuning,
   fled: boolean,
 ): StepResult {
-  events.push({ type: 'turnEnd', actor: state.queue[0] as ActorId });
+  const actingId = state.queue[0] as ActorId;
+  let actors = actorsIn;
+
+  // ── 턴 종료 시 상태이상 처리 ────────────────────────────────────────────
+  // 독 피해를 먼저, 지속 턴 감소를 나중에. 순서를 뒤집으면 마지막 턴에 독이 한 번 덜 들어간다.
+  const acting = actors.find((a) => a.id === actingId);
+  if (acting !== undefined && isAlive(acting)) {
+    let updated = acting;
+
+    if (hasAilment(updated, 'poison')) {
+      const amount = poisonDamage(updated, tuning.ailment);
+      updated = applyDamage(updated, amount);
+      events.push({ type: 'ailmentDamage', actor: actingId, kind: 'poison', amount });
+      if (!isAlive(updated)) events.push({ type: 'death', actor: actingId });
+    }
+
+    const ticked = tickAilments(updated);
+    for (const kind of ticked.expired) {
+      events.push({ type: 'ailmentEnded', actor: actingId, kind });
+    }
+    actors = replaceActor(actors, ticked.actor);
+  }
+
+  events.push({ type: 'turnEnd', actor: actingId });
 
   // 죽은 액터는 남은 순서에서도 빠진다.
   const alive = new Set(actors.filter(isAlive).map((a) => a.id));

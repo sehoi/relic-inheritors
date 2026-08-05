@@ -10,6 +10,7 @@
 
 import type { AttackSpec } from './damage.js';
 import type { BattleActor } from './index.js';
+import type { Ailment } from './status.js';
 
 export interface Skill {
   readonly id: string;
@@ -18,6 +19,12 @@ export interface Skill {
   /** 사용 시 쌓이는 침식. 위력이 높을수록 크게 잡는다. */
   readonly erosion: number;
   readonly attack: AttackSpec;
+  /** 명중 시 상태이상을 건다. 지속 턴을 생략하면 기본값을 쓴다. */
+  readonly inflict?: {
+    readonly kind: Ailment;
+    readonly chance: number;
+    readonly turns?: number;
+  };
 }
 
 export interface ErosionTuning {

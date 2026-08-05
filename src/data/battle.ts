@@ -1,5 +1,6 @@
 import type { DamageTuning } from '../core/battle/damage.js';
 import type { ErosionTuning } from '../core/battle/skill.js';
+import type { AilmentTuning } from '../core/battle/status.js';
 import type { BattleTuning, FleeTuning, TurnOrderTuning } from '../core/battle/index.js';
 
 /**
@@ -58,9 +59,30 @@ export const EROSION: ErosionTuning = {
   max: 200,
 };
 
+/**
+ * 상태이상 (GDD §6.2).
+ *
+ * 마비 40%, 혼란 50% 는 "가끔 억울하지만 대책은 세울 수 있는" 정도를 노린 초기값이다.
+ * 100%에 가까우면 걸린 순간 게임이 끝나고, 낮으면 이상을 거는 스킬이 무의미해진다.
+ */
+export const AILMENT: AilmentTuning = {
+  poisonPercent: 0.06,
+  paralysisSkipChance: 0.4,
+  confusionChance: 0.5,
+  defaultTurns: {
+    poison: 5,
+    paralysis: 3,
+    // 수면은 피격하면 깨므로 길어도 된다.
+    sleep: 4,
+    silence: 3,
+    confusion: 3,
+  },
+};
+
 export const BATTLE_TUNING: BattleTuning = {
   turnOrder: TURN_ORDER,
   damage: DAMAGE,
   flee: FLEE,
   erosion: EROSION,
+  ailment: AILMENT,
 };
