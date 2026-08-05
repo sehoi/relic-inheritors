@@ -184,8 +184,23 @@ describe('validateRelic', () => {
   });
 
   it('같은 액티브를 중복으로 담을 수 없다', () => {
-    const duped: Relic = { ...valid, actives: [skill('ember-lash'), skill('ember-lash')] };
+    const duped: Relic = {
+      ...valid,
+      actives: [
+        { skill: skill('ember-lash'), unlockRank: 0 },
+        { skill: skill('ember-lash'), unlockRank: 1 },
+      ],
+    };
     expect(() => validateRelic(duped)).toThrow(/중복/);
+  });
+
+  it('0단계에 쓸 수 있는 액티브가 없으면 거부한다', () => {
+    // 끼워도 아무 일이 일어나지 않는 유물이 된다.
+    const locked: Relic = {
+      ...valid,
+      actives: [{ skill: skill('ember-lash'), unlockRank: 2 }],
+    };
+    expect(() => validateRelic(locked)).toThrow(/0단계/);
   });
 });
 

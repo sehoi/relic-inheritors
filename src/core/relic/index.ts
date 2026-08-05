@@ -20,6 +20,15 @@ export type RelicId = string;
 export const RELIC_TAGS = ['ember', 'tide', 'storm', 'stone', 'hollow', 'ward'] as const;
 export type RelicTag = (typeof RELIC_TAGS)[number];
 
+export interface RelicActive {
+  readonly skill: Skill;
+  /**
+   * 이 숙련 단계에 도달해야 쓸 수 있다 (GDD §5.3). 0이면 처음부터.
+   * 잠긴 스킬이 있어야 유물을 계속 쓸 이유가 생긴다.
+   */
+  readonly unlockRank: number;
+}
+
 export interface Relic {
   readonly id: RelicId;
   readonly name: string;
@@ -30,7 +39,7 @@ export interface Relic {
   /** 장착 시 더해지는 스탯. 지정하지 않은 항목은 0. */
   readonly statMods: Readonly<Partial<Stats>>;
   /** 이 유물이 공급하는 액티브 스킬. 능력의 실제 출처다. */
-  readonly actives: readonly Skill[];
+  readonly actives: readonly RelicActive[];
   /** 스킬 침식량에 곱해지는 계수 (T-026). 1이면 스킬 원래 값 그대로. */
   readonly erosionFactor: number;
   /** 이 유물이 전하는 세계관 파편. 긴 대본 대신 이걸로 서사를 전달한다 (GDD §2). */
@@ -164,16 +173,35 @@ export function applyStatMods(base: Stats, mods: Readonly<Partial<Stats>>): Stat
   };
 }
 
-/** 유물이 공급하는 모든 액티브 스킬. 중복 스킬은 한 번만 나온다. */
-export function activesOf(relics: readonly Relic[]): readonly Skill[] {
+/**
+ * 지금 쓸 수 있는 액티브 스킬. 중복 스킬은 한 번만 나온다.
+ *
+ * `ranks` 를 주지 않으면 모두 0단계로 본다 — 숙련도를 모르는 호출부(테스트·시뮬레이터)가
+ * 해금되지 않은 스킬을 실수로 쓰는 일을 막는다.
+ */
+export function activesOf(
+  relics: readonly Relic[],
+  ranks: Readonly<Record<RelicId, number>> = {},
+): readonly Skill[] {
   const seen = new Set<string>();
   return relics.flatMap((relic) =>
-    relic.actives.filter((skill) => {
-      if (seen.has(skill.id)) return false;
-      seen.add(skill.id);
-      return true;
-    }),
+    relic.actives
+      .filter((active) => active.unlockRank <= (ranks[relic.id] ?? 0))
+      .map((active) => active.skill)
+      .filter((skill) => {
+        if (seen.has(skill.id)) return false;
+        seen.add(skill.id);
+        return true;
+      }),
   );
+}
+
+/** 아직 잠긴 액티브. 장착 화면이 "몇 단계에 무엇이 열리는지" 를 보여주는 데 쓴다. */
+export function lockedActives(
+  relic: Relic,
+  rank: number,
+): readonly RelicActive[] {
+  return relic.actives.filter((active) => active.unlockRank > rank);
 }
 
 export function validateRelic(relic: Relic): void {
@@ -190,11 +218,20 @@ export function validateRelic(relic: Relic): void {
     at.add('tags 가 비어 있습니다. 공명에 기여하지 못하는 유물이 됩니다.');
   }
   if (relic.actives.length === 0) at.add('actives 가 비어 있습니다. 능력의 출처가 유물입니다 (ADR-004).');
+  // 0단계에서 쓸 수 있는 것이 하나도 없으면 끼워도 아무 일이 없다.
+  if (relic.actives.length > 0 && !relic.actives.some((active) => active.unlockRank === 0)) {
+    at.add('0단계에서 쓸 수 있는 액티브가 없습니다. 끼워도 아무 일이 일어나지 않습니다.');
+  }
+  for (const active of relic.actives) {
+    if (!Number.isInteger(active.unlockRank) || active.unlockRank < 0) {
+      at.add(`"${active.skill.id}" 의 unlockRank 는 0 이상의 정수여야 합니다.`);
+    }
+  }
   if (relic.erosionFactor <= 0) at.add(`erosionFactor 는 양수여야 합니다 (받은 값: ${relic.erosionFactor}).`);
   if (relic.lore.trim().length === 0) at.add('lore 가 비어 있습니다. 유물이 곧 서사 단위입니다 (GDD §2).');
 
   const guard = createDuplicateGuard('액티브 스킬', at);
-  for (const skill of relic.actives) guard(skill.id);
+  for (const active of relic.actives) guard(active.skill.id);
 
   problems.throwIfAny('유물');
 }

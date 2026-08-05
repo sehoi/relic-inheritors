@@ -21,7 +21,12 @@ import {
 import { ALL_RESONANCES } from '../data/resonances.js';
 import { AREA_LEVELS, starterParty } from '../data/encounters.js';
 import { STARTING_MAP } from '../data/maps.js';
-import { STARTING_RELICS, relic } from '../data/relics.js';
+import {
+  gainAll,
+  rankOfRelic,
+  type Attunement,
+} from '../core/relic/attunement.js';
+import { ATTUNEMENT, STARTING_RELICS, relic } from '../data/relics.js';
 
 /**
  * 전투 밖에서도 이어지는 파티 상태.
@@ -53,6 +58,8 @@ interface Vitals {
 const WORLD_SEED = 20_260_805;
 
 let vitals: Readonly<Record<ActorId, Vitals>> | undefined;
+/** 유물별 누적 숙련도. **유물에 귀속되므로 착용자를 바꿔도 유지된다** (GDD §5.3). */
+let attunement: Attunement = {};
 let inventory: Inventory = INITIAL_INVENTORY;
 let loadout: Loadout | undefined;
 let worldRng: Rng | undefined;
@@ -147,12 +154,52 @@ export function partyForBattle(): BattleActor[] {
  */
 export function partySkills(): Readonly<Record<ActorId, readonly Skill[]>> {
   const current = getLoadout();
+  const ranks = relicRanks();
   const skills: Record<ActorId, readonly Skill[]> = {};
 
   for (const member of basePartyMembers()) {
-    skills[member.id] = activesOf(equippedBy(current, member.id).map((id) => relic(id)));
+    skills[member.id] = activesOf(
+      equippedBy(current, member.id).map((id) => relic(id)),
+      ranks,
+    );
   }
   return skills;
+}
+
+/** 유물별 현재 숙련 단계. 해금 판정과 장착 화면이 같이 쓴다. */
+export function relicRanks(): Readonly<Record<string, number>> {
+  const ranks: Record<string, number> = {};
+  for (const relicId of ownedRelics()) {
+    ranks[relicId] = rankOfRelic(attunement, relicId, ATTUNEMENT);
+  }
+  return ranks;
+}
+
+export function getAttunement(): Attunement {
+  return attunement;
+}
+
+/**
+ * 전투에서 쓴 스킬을 유물 숙련도로 환산한다.
+ *
+ * **끼운 사람이 아니라 유물에 쌓인다** (GDD §5.3). 그래서 스킬 id 를 그 스킬을 공급한
+ * 유물로 되짚어야 한다 — 같은 스킬을 두 유물이 공급하면 장착한 쪽에 쌓인다.
+ */
+export function recordSkillUses(uses: Readonly<Record<string, number>>): void {
+  const current = getLoadout();
+  const byRelic: Record<string, number> = {};
+
+  for (const relicId of allEquipped(current)) {
+    const entry = relic(relicId);
+    for (const active of entry.actives) {
+      const count = uses[active.skill.id];
+      if (count !== undefined && count > 0) {
+        byRelic[relicId] = (byRelic[relicId] ?? 0) + count;
+      }
+    }
+  }
+
+  attunement = gainAll(attunement, byRelic, ATTUNEMENT);
 }
 
 /** 전투가 끝난 뒤 파티 쪽 상태만 되가져온다. 스탯은 저장하지 않는다 — 매번 다시 계산한다. */
@@ -184,4 +231,5 @@ export function resetParty(): void {
   inventory = INITIAL_INVENTORY;
   loadout = undefined;
   worldRng = undefined;
+  attunement = {};
 }
