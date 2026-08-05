@@ -1,4 +1,5 @@
 import type { DamageTuning } from '../core/battle/damage.js';
+import type { ErosionTuning } from '../core/battle/skill.js';
 import type { BattleTuning, FleeTuning, TurnOrderTuning } from '../core/battle/index.js';
 
 /**
@@ -43,8 +44,23 @@ export const FLEE: FleeTuning = {
   maxChance: 0.95,
 };
 
+/**
+ * 침식 (GDD §5.4).
+ *
+ * `threshold` 100 은 표본 스킬 기준으로 강한 스킬 3회 또는 약한 스킬 8회쯤에서
+ * 폭주가 오도록 잡은 값이다. T-019 시뮬레이터가 실제 전투 길이에 맞춰 조정한다.
+ */
+export const EROSION: ErosionTuning = {
+  threshold: 100,
+  // 0으로 두지 않는다 — 폭주가 침식을 완전히 씻어내면
+  // "일부러 폭주시키고 다시 시작"이 최적 전략이 된다.
+  reliefRatio: 0.5,
+  max: 200,
+};
+
 export const BATTLE_TUNING: BattleTuning = {
   turnOrder: TURN_ORDER,
   damage: DAMAGE,
   flee: FLEE,
+  erosion: EROSION,
 };
