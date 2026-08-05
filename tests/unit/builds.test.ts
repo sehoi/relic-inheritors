@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   adoptionRates,
+  choiceBuildSize,
   enumerateBuilds,
+  exactBuilds,
+  groupBySize,
   rankSpread,
   shareInBand,
   thinBuilds,
@@ -49,6 +52,41 @@ describe('enumerateBuilds', () => {
   });
 });
 
+describe('exactBuilds', () => {
+  it('크기가 정확히 맞는 조합만 낸다', () => {
+    expect(ids(exactBuilds(['a', 'b', 'c'], 2)).sort()).toEqual(['a+b', 'a+c', 'b+c']);
+  });
+
+  it('유물보다 큰 크기를 요구하면 비어 있다', () => {
+    expect(exactBuilds(['a', 'b'], 3)).toEqual([]);
+  });
+
+  it('크기 0 을 거부한다', () => {
+    expect(() => exactBuilds(['a'], 0)).toThrow(RangeError);
+  });
+});
+
+describe('choiceBuildSize', () => {
+  it('슬롯을 채우되 가진 것을 다 끼지는 못하게 한다', () => {
+    // 전부 낄 수 있으면 조합이 하나뿐이라 고를 것이 없다.
+    expect(choiceBuildSize(7, 4)).toBe(4);
+    expect(choiceBuildSize(3, 4)).toBe(2);
+    expect(choiceBuildSize(5, 4)).toBe(4);
+  });
+
+  it('가진 것이 슬롯보다 적으면 하나는 남긴다', () => {
+    expect(choiceBuildSize(2, 8)).toBe(1);
+  });
+
+  it('유물이 하나뿐이면 던진다 (고를 것이 없다)', () => {
+    expect(() => choiceBuildSize(1, 4)).toThrow(RangeError);
+  });
+
+  it('슬롯이 0 이면 던진다', () => {
+    expect(() => choiceBuildSize(5, 0)).toThrow(RangeError);
+  });
+});
+
 describe('thinBuilds', () => {
   const many = enumerateBuilds(['a', 'b', 'c', 'd', 'e'], 5);
 
@@ -72,6 +110,18 @@ describe('thinBuilds', () => {
 
   it('한도 0 을 거부한다', () => {
     expect(() => thinBuilds(many, 0)).toThrow(RangeError);
+  });
+});
+
+describe('groupBySize', () => {
+  it('크기별로 묶고 오름차순으로 낸다', () => {
+    const entries = enumerateBuilds(['a', 'b'], 2).map((build) => ({ build }));
+    expect([...groupBySize(entries).keys()]).toEqual([1, 2]);
+    expect(groupBySize(entries).get(1)).toHaveLength(2);
+  });
+
+  it('비어 있으면 빈 묶음이다', () => {
+    expect(groupBySize([]).size).toBe(0);
   });
 });
 

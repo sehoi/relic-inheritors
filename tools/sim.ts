@@ -13,8 +13,8 @@ import { seedRange, simulateMany, type SimSummary } from '../src/core/battle/sim
 import { sweep } from '../src/core/battle/sweep.js';
 import {
   adoptionRates,
-  enumerateBuilds,
-  groupBySize,
+  choiceBuildSize,
+  exactBuilds,
   rankSpread,
   shareInBand,
   thinBuilds,
@@ -102,9 +102,16 @@ console.log(
   `\n\n유물 조합 훑기 — 파티 Lv${BUILD_SWEEP.partyLevel} vs 잡몹 Lv${BUILD_SWEEP.enemyLevel}\n`,
 );
 
-const builds = thinBuilds(
-  enumerateBuilds(Object.keys(RELICS), Math.min(Object.keys(RELICS).length, SLOTS_PER_MEMBER * 2)),
-  BUILD_SWEEP.maxBuilds,
+const relicIds = Object.keys(RELICS);
+const buildSize = choiceBuildSize(relicIds.length, SLOTS_PER_MEMBER * 2);
+const allBuilds = exactBuilds(relicIds, buildSize);
+const builds = thinBuilds(allBuilds, BUILD_SWEEP.maxBuilds);
+
+console.log(
+  `유물 ${relicIds.length}종 · 슬롯을 채우는 조합 크기 ${buildSize} · ` +
+    (builds.length < allBuilds.length
+      ? `${allBuilds.length}개 중 ${builds.length}개를 고르게 솎아 잰다`
+      : `${builds.length}개 전부`),
 );
 
 const scored = sweep(
@@ -118,24 +125,15 @@ const scored = sweep(
   BATTLE_TUNING,
 ).map((entry) => ({ build: entry.item, winRate: entry.summary.winRate }));
 
-// 크기가 같은 조합끼리 비교한다 (ADR-013). 섞으면 "많이 낄수록 이긴다" 가 격차로 잡힌다.
-for (const [size, group] of groupBySize(scored)) {
-  const rates = group.map((row) => row.winRate);
-  const measurable = group.length >= RELIC_INVARIANTS.minClassSize;
+const rates = scored.map((row) => row.winRate);
+console.log(
+  `격차 ${pct(rankSpread(rates, RELIC_INVARIANTS.dominanceRank))} (상한 ${pct(RELIC_INVARIANTS.maxRankSpread)})  ` +
+    `밴드 ${pct(shareInBand(rates, RELIC_INVARIANTS.healthyBand.low, RELIC_INVARIANTS.healthyBand.high))} ` +
+    `(하한 ${pct(RELIC_INVARIANTS.minBandShare)})\n`,
+);
 
-  console.log(
-    `크기 ${size} (${group.length}개)` +
-      (measurable
-        ? `  격차 ${pct(rankSpread(rates, RELIC_INVARIANTS.dominanceRank))}` +
-          ` (상한 ${pct(RELIC_INVARIANTS.maxRankSpread)})` +
-          `  밴드 ${pct(shareInBand(rates, RELIC_INVARIANTS.healthyBand.low, RELIC_INVARIANTS.healthyBand.high))}` +
-          ` (하한 ${pct(RELIC_INVARIANTS.minBandShare)})`
-        : '  ← 조합이 하나뿐이라 재지 않는다'),
-  );
-
-  for (const row of [...group].sort((a, b) => b.winRate - a.winRate)) {
-    console.log(`  ${pad(pct(row.winRate), 8)}  ${row.build.id}`);
-  }
+for (const row of [...scored].sort((a, b) => b.winRate - a.winRate)) {
+  console.log(`  ${pad(pct(row.winRate), 8)}  ${row.build.id}`);
 }
 
 const good = topBuilds(scored, RELIC_INVARIANTS.goodBuildRatio);
