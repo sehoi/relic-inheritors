@@ -13,6 +13,15 @@ import {
 } from '../../core/world/movement.js';
 import { blockedByOccupants, occupantInFront } from '../../core/world/interaction.js';
 import { portalAt, type Portal } from '../../core/world/portal.js';
+import {
+  advanceCounter,
+  startCounter,
+  type EncounterCounter,
+} from '../../core/world/encounter.js';
+import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
+import { getInventory, getParty, worldRandom } from '../partyStore.js';
+import { encountersEnabled } from '../devFlags.js';
+import type { BattleEntry } from './BattleScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
 import {
   TEXT_BOX_LAYOUT,
@@ -63,6 +72,7 @@ export class OverworldScene extends Phaser.Scene {
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
   private stepping = false;
   private dialogue: DialogueSession | undefined;
+  private encounterCounter!: EncounterCounter;
   /** 층 이동이 시작된 뒤의 입력을 전부 무시한다. 씬이 다시 시작되기까지 몇 프레임이 남는다. */
   private leaving = false;
 
@@ -86,6 +96,7 @@ export class OverworldScene extends Phaser.Scene {
     this.stepping = false;
     this.leaving = false;
     this.dialogue = undefined;
+    this.encounterCounter = startCounter(worldRandom(), ENCOUNTER_STEPS);
 
     // 월드는 원점에 둔다. 화면에 무엇이 보이는지는 전적으로 카메라가 정한다.
     const world = this.add.container(0, 0);
@@ -156,9 +167,34 @@ export class OverworldScene extends Phaser.Scene {
       duration: STEP_DURATION,
       onComplete: () => {
         this.stepping = false;
-        this.checkPortal();
+        // 계단이 먼저다. 층을 옮기는 걸음에서 전투가 터지면 어느 층에서 싸우는지 모호해진다.
+        if (this.checkPortal()) return;
+        this.checkEncounter();
       },
     });
+  }
+
+  /**
+   * 걸음 수를 세다가 임계에 닿으면 전투로 넘어간다 (GDD §6.1).
+   * 돌아올 지점을 함께 넘겨 전투 후 제자리에서 이어가게 한다.
+   */
+  private checkEncounter(): void {
+    if (!encountersEnabled()) return;
+
+    const outcome = advanceCounter(this.encounterCounter);
+    this.encounterCounter = outcome.counter;
+    if (!outcome.triggered) return;
+
+    const rng = worldRandom();
+    this.leaving = true;
+    this.scene.start('battle', {
+      encounter: rollEncounter(this.mapId, rng, getParty(), getInventory()),
+      seed: rng.int(1, 1_000_000),
+      returnTo: {
+        mapId: this.mapId,
+        arrival: { position: this.walker.position, facing: this.walker.facing },
+      },
+    } satisfies BattleEntry);
   }
 
   // ── 층 이동 ─────────────────────────────────────────────────────────────
@@ -167,15 +203,16 @@ export class OverworldScene extends Phaser.Scene {
    * 포탈은 밟으면 발동한다 — 고전 JRPG의 계단 방식이다.
    * 이동 트윈이 끝난 뒤에 확인하는 이유는, 걷는 도중에 화면이 바뀌면 어색하기 때문이다.
    */
-  private checkPortal(): void {
+  private checkPortal(): boolean {
     const portal = portalAt(this.portals, this.walker.position.x, this.walker.position.y);
-    if (portal === undefined) return;
+    if (portal === undefined) return false;
 
     this.leaving = true;
     this.scene.restart({
       mapId: portal.target.mapId as MapId,
       arrival: { position: portal.target.position, facing: portal.target.facing },
     } satisfies OverworldEntry);
+    return true;
   }
 
   // ── 대화 ────────────────────────────────────────────────────────────────

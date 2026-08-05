@@ -19,7 +19,9 @@ import { BATTLE_TUNING } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markScene, type BattlePhase } from '../domState.js';
+import { resetParty, saveInventory, saveParty } from '../partyStore.js';
 import { Gauge } from '../ui/Gauge.js';
+import type { OverworldEntry } from './OverworldScene.js';
 
 /** 이벤트 하나를 보여주는 시간. 너무 빠르면 무슨 일이 있었는지 읽을 수 없다. */
 const EVENT_DELAY = 260;
@@ -27,6 +29,8 @@ const EVENT_DELAY = 260;
 export interface BattleEntry {
   readonly encounter?: Encounter;
   readonly seed?: number;
+  /** 전투가 끝나면 돌아갈 곳. 없으면 타이틀로 나간다 (개발용 직접 진입). */
+  readonly returnTo?: OverworldEntry;
 }
 
 interface PendingAction {
@@ -45,6 +49,7 @@ interface PendingAction {
 export class BattleScene extends Phaser.Scene {
   private encounter!: Encounter;
   private state!: BattleState;
+  private returnTo: OverworldEntry | undefined;
 
   private phase: BattlePhase = 'command';
   private pending: PendingAction | undefined;
@@ -66,6 +71,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   init(entry?: BattleEntry): void {
+    this.returnTo = entry?.returnTo;
     this.encounter = entry?.encounter ?? ruinEncounter(8);
     this.state = createBattle(
       this.encounter.actors,
@@ -324,6 +330,23 @@ export class BattleScene extends Phaser.Scene {
     this.setPhase('over', this.state.outcome);
     this.message(this.state.outcome === 'victory' ? '승리!' : this.state.outcome === 'fled' ? '이탈' : '전멸…');
     this.renderMenu();
+
+    // 살아남았으면 HP·MP·침식·소지품이 전투 밖으로 이어진다 (GDD §5.4).
+    if (this.state.outcome === 'defeat') {
+      resetParty();
+    } else {
+      saveParty(this.state.actors);
+      saveInventory(this.state.inventory);
+    }
+  }
+
+  /** 전투가 끝난 뒤 나갈 곳. 전멸이면 타이틀, 아니면 왔던 자리로 돌아간다. */
+  private leaveBattle(): void {
+    if (this.state.outcome === 'defeat' || this.returnTo === undefined) {
+      this.scene.start('title');
+      return;
+    }
+    this.scene.start('overworld', this.returnTo);
   }
 
   // ── 메뉴 ────────────────────────────────────────────────────────────────
@@ -399,7 +422,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase === 'playing') return;
 
     if (this.phase === 'over') {
-      if (this.pressed('confirm') || this.pressed('confirm2')) this.scene.start('title');
+      if (this.pressed('confirm') || this.pressed('confirm2')) this.leaveBattle();
       return;
     }
 
