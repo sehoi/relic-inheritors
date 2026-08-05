@@ -17,6 +17,7 @@ import { erosionThreshold, skillBlockReason, type Skill } from '../../core/battl
 import { createRng } from '../../core/rng/index.js';
 import { BATTLE_TUNING } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
+import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markScene, type BattlePhase } from '../domState.js';
 import {
@@ -161,9 +162,14 @@ export class BattleScene extends Phaser.Scene {
 
     party.forEach((member, i) => {
       const top = 176 + i * 42;
+
+      // 전투는 프론트뷰다 (GDD §6.2). 이름만 있으면 누가 누구인지 이름표로만 알게 되는데,
+      // 유물을 누구에게 줄지 고르는 게임에서 그건 부족하다.
+      this.add.image(22, top + 10, CHARACTER_SHEET.key, portraitOf(member.id));
+
       this.partyLabels.set(
         member.id,
-        this.add.text(18, top, member.name, {
+        this.add.text(36, top, member.name, {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: '#e8e3d3',
@@ -171,10 +177,10 @@ export class BattleScene extends Phaser.Scene {
       );
 
       this.partyGauges.set(member.id, {
-        hp: new Gauge(this, 92, top + 1, 88, 7, 0xb0304a),
-        mp: new Gauge(this, 92, top + 11, 88, 5, 0x4a72b0),
+        hp: new Gauge(this, 108, top + 1, 84, 7, 0xb0304a),
+        mp: new Gauge(this, 108, top + 11, 84, 5, 0x4a72b0),
         // 침식은 찰수록 나쁘다. 붉은 보라로 다른 축임을 알린다.
-        erosion: new Gauge(this, 212, top + 1, 96, 7, 0x8a4ab0),
+        erosion: new Gauge(this, 222, top + 1, 90, 7, 0x8a4ab0),
       });
 
       // 막대 색만으로는 무엇인지 알 수 없다. 좁은 자리라 두 글자로 줄인다.
@@ -183,7 +189,7 @@ export class BattleScene extends Phaser.Scene {
         ['MP', 10, '#4a72b0'],
       ] as const) {
         this.add
-          .text(88, top + offsetY, label, {
+          .text(104, top + offsetY, label, {
             fontFamily: 'monospace',
             fontSize: '8px',
             color,
@@ -192,7 +198,7 @@ export class BattleScene extends Phaser.Scene {
       }
 
       this.add
-        .text(208, top, 'ER', { fontFamily: 'monospace', fontSize: '8px', color: '#8a4ab0' })
+        .text(218, top, 'ER', { fontFamily: 'monospace', fontSize: '8px', color: '#8a4ab0' })
         .setOrigin(1, 0);
     });
 

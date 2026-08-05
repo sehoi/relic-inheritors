@@ -36,6 +36,14 @@ export interface AssetSource {
 export interface FrameSize {
   width: number;
   height: number;
+  /**
+   * 타일 사이의 간격(px). 생략하면 0.
+   *
+   * 팩마다 다르다 — Kenney 의 `_packed` 시트는 간격이 없지만, 일반 시트는 1px 씩 띄운다.
+   * 이 값을 틀리면 화면이 비지 않고 **한 칸씩 밀린 그림**이 나오므로, 에셋이 없을 때보다
+   * 알아채기 어렵다. 그래서 색인에 명시하게 한다.
+   */
+  spacing?: number;
 }
 
 /**
@@ -292,7 +300,18 @@ function validateEntry(
       problems.push(`${where}: frame.width/height 는 양의 정수여야 합니다.`);
       return undefined;
     }
-    return { ...base, kind: kind as FramedKind, frame: { width, height } };
+
+    const spacing = frame['spacing'];
+    if (spacing !== undefined && (typeof spacing !== 'number' || !Number.isInteger(spacing) || spacing < 0)) {
+      problems.push(`${where}: frame.spacing 은 0 이상의 정수여야 합니다 (받은 값: ${String(spacing)}).`);
+      return undefined;
+    }
+
+    return {
+      ...base,
+      kind: kind as FramedKind,
+      frame: spacing === undefined ? { width, height } : { width, height, spacing },
+    };
   }
 
   return { ...base, kind: kind as PlainKind };

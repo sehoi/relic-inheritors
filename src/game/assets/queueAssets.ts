@@ -21,6 +21,7 @@ export function queueAssets(loader: Phaser.Loader.LoaderPlugin, catalog: AssetCa
         loader.spritesheet(entry.key, entry.path, {
           frameWidth: entry.frame.width,
           frameHeight: entry.frame.height,
+          spacing: entry.frame.spacing ?? 0,
         });
         break;
 
