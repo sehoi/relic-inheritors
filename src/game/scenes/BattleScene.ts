@@ -19,7 +19,14 @@ import { BATTLE_TUNING } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markScene, type BattlePhase } from '../domState.js';
-import { resetParty, saveInventory, saveParty } from '../partyStore.js';
+import {
+  getInventory,
+  partyForBattle,
+  partySkills,
+  resetParty,
+  saveInventory,
+  saveParty,
+} from '../partyStore.js';
 import { Gauge } from '../ui/Gauge.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -72,7 +79,14 @@ export class BattleScene extends Phaser.Scene {
 
   init(entry?: BattleEntry): void {
     this.returnTo = entry?.returnTo;
-    this.encounter = entry?.encounter ?? ruinEncounter(8);
+    // 개발용 직접 진입(`?scene=battle`)에서도 유물에서 스킬이 나오게 한다.
+    this.encounter =
+      entry?.encounter ??
+      ruinEncounter(8, {
+        party: partyForBattle(),
+        partySkills: partySkills(),
+        inventory: getInventory(),
+      });
     this.state = createBattle(
       this.encounter.actors,
       entry?.seed ?? 1,

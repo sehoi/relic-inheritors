@@ -1,8 +1,20 @@
-import type { BattleActor } from '../core/battle/index.js';
+import type { ActorId, BattleActor } from '../core/battle/index.js';
 import type { Inventory } from '../core/battle/item.js';
+import type { Skill } from '../core/battle/skill.js';
+import type { AilmentState } from '../core/battle/status.js';
 import { createRng, type Rng } from '../core/rng/index.js';
+import {
+  activesOf,
+  applyStatMods,
+  createLoadout,
+  equip,
+  equippedBy,
+  sumStatMods,
+  type Loadout,
+} from '../core/relic/index.js';
 import { AREA_LEVELS, starterParty } from '../data/encounters.js';
 import { STARTING_MAP } from '../data/maps.js';
+import { STARTING_RELICS, relic } from '../data/relics.js';
 
 /**
  * 전투 밖에서도 이어지는 파티 상태.
@@ -10,6 +22,9 @@ import { STARTING_MAP } from '../data/maps.js';
  * HP·MP·침식은 전투가 끝나도 남는다 (GDD §5.4). 씬은 오갈 때마다 새로 만들어지므로
  * 상태를 어딘가에 두어야 하는데, **세이브(M4)가 생기기 전까지는 메모리에 둔다.**
  * 새로고침하면 초기화된다 — 그건 세이브가 할 일이지 이 모듈이 할 일이 아니다.
+ *
+ * **기본 스탯과 유물 보정을 분리해 보관한다.** 보정이 적용된 스탯을 저장하면
+ * 전투를 치를 때마다 보정이 겹쳐 쌓인다. 저장하는 것은 "지금 얼마나 다쳤는가" 뿐이다.
  */
 
 const INITIAL_INVENTORY: Inventory = {
@@ -20,31 +35,121 @@ const INITIAL_INVENTORY: Inventory = {
   'ashen-ember': 1,
 };
 
-/**
- * 월드 난수. 인카운터 발생과 조우 구성이 여기서 나온다.
- *
- * `Math.random()` 을 쓰지 않는다 (ADR-002). 세션 시작부터의 수열이 고정이라
- * "몇 걸음째에 뭐가 나왔는지" 를 재현할 수 있다. 세이브(M4)가 생기면 이 상태도 함께 저장된다.
- */
+/** 전투 사이에 이어지는 값. 스탯은 매번 기본값 + 유물 보정으로 다시 계산한다. */
+interface Vitals {
+  readonly hp: number;
+  readonly mp: number;
+  readonly erosion: number;
+  readonly ailments: readonly AilmentState[];
+}
+
 const WORLD_SEED = 20_260_805;
 
-let party: readonly BattleActor[] | undefined;
+let vitals: Readonly<Record<ActorId, Vitals>> | undefined;
 let inventory: Inventory = INITIAL_INVENTORY;
+let loadout: Loadout | undefined;
 let worldRng: Rng | undefined;
 
+/**
+ * 월드 난수. 인카운터 발생과 조우 구성이 여기서 나온다.
+ * `Math.random()` 을 쓰지 않는다 (ADR-002) — 세션 시작부터의 수열이 고정이라 재현할 수 있다.
+ */
 export function worldRandom(): Rng {
   worldRng ??= createRng(WORLD_SEED);
   return worldRng;
 }
 
-export function getParty(): readonly BattleActor[] {
-  party ??= starterParty(AREA_LEVELS[STARTING_MAP]);
-  return party;
+/** 보정이 붙지 않은 파티. 스탯 계산의 기준점이다. */
+function basePartyMembers(): readonly BattleActor[] {
+  return starterParty(AREA_LEVELS[STARTING_MAP]);
 }
 
-/** 전투가 끝난 뒤 파티 쪽 상태만 되가져온다. 적은 버린다. */
+export function ownedRelics(): readonly string[] {
+  return STARTING_RELICS;
+}
+
+/**
+ * 처음에는 가진 유물을 **한 명씩 돌아가며** 나눠 준다. 장착 UI 는 T-029.
+ *
+ * 한 사람에게 몰아주지 않는 이유는, 유물이 능력의 출처라서(ADR-004) 몰아주면
+ * 나머지가 기본 공격만 하는 허수아비가 되기 때문이다.
+ */
+function defaultLoadout(): Loadout {
+  const members = basePartyMembers();
+  let next = createLoadout(members.map((member) => member.id));
+
+  ownedRelics().forEach((relicId, index) => {
+    const member = members[index % members.length];
+    const slot = Math.floor(index / members.length);
+    if (member === undefined || slot >= 2) return;
+    next = equip(next, member.id, slot, relicId, ownedRelics());
+  });
+
+  return next;
+}
+
+export function getLoadout(): Loadout {
+  loadout ??= defaultLoadout();
+  return loadout;
+}
+
+export function setLoadout(next: Loadout): void {
+  loadout = next;
+}
+
+/**
+ * 전투에 내보낼 파티.
+ *
+ * 기본 스탯에 **장착 유물의 보정을 얹어** 만든다 (ADR-004). 이어받은 HP·MP 는
+ * 새 최대치를 넘지 않게 자른다 — 유물을 빼면 최대 HP 가 줄어들 수 있다.
+ */
+export function partyForBattle(): BattleActor[] {
+  const current = getLoadout();
+
+  return basePartyMembers().map((member) => {
+    const relics = equippedBy(current, member.id).map((id) => relic(id));
+    const stats = applyStatMods(member.stats, sumStatMods(relics));
+    const saved = vitals?.[member.id];
+
+    return {
+      ...member,
+      stats,
+      hp: Math.min(saved?.hp ?? stats.maxHp, stats.maxHp),
+      mp: Math.min(saved?.mp ?? stats.maxMp, stats.maxMp),
+      erosion: saved?.erosion ?? 0,
+      ailments: saved?.ailments ?? [],
+    };
+  });
+}
+
+/**
+ * 파티원이 쓸 수 있는 스킬.
+ *
+ * **장착한 유물에서만 나온다** (ADR-004). 캐릭터에 스킬을 직접 들려주던 배선은 이걸로 사라졌다.
+ */
+export function partySkills(): Readonly<Record<ActorId, readonly Skill[]>> {
+  const current = getLoadout();
+  const skills: Record<ActorId, readonly Skill[]> = {};
+
+  for (const member of basePartyMembers()) {
+    skills[member.id] = activesOf(equippedBy(current, member.id).map((id) => relic(id)));
+  }
+  return skills;
+}
+
+/** 전투가 끝난 뒤 파티 쪽 상태만 되가져온다. 스탯은 저장하지 않는다 — 매번 다시 계산한다. */
 export function saveParty(actors: readonly BattleActor[]): void {
-  party = actors.filter((actor) => actor.side === 'party');
+  const next: Record<ActorId, Vitals> = {};
+  for (const actor of actors) {
+    if (actor.side !== 'party') continue;
+    next[actor.id] = {
+      hp: actor.hp,
+      mp: actor.mp,
+      erosion: actor.erosion,
+      ailments: actor.ailments ?? [],
+    };
+  }
+  vitals = next;
 }
 
 export function getInventory(): Inventory {
@@ -57,7 +162,8 @@ export function saveInventory(next: Inventory): void {
 
 /** 전멸했을 때. 세이브가 생기면 마지막 저장 지점 복원으로 바뀐다. */
 export function resetParty(): void {
-  party = undefined;
+  vitals = undefined;
   inventory = INITIAL_INVENTORY;
+  loadout = undefined;
   worldRng = undefined;
 }

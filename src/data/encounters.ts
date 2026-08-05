@@ -7,7 +7,6 @@ import type { Rng } from '../core/rng/index.js';
 import { aiProfile } from './ai.js';
 import type { MapId } from './maps.js';
 import { MOB_CURVES, PARTY_CURVES, makeCombatant, statsAtLevel } from './progression.js';
-import { skill } from './skills.js';
 
 /**
  * 전투 편성.
@@ -15,8 +14,8 @@ import { skill } from './skills.js';
  * 고유명사는 확정 전까지 쓰지 않는다 (GDD §10). 여기 이름들은 **역할을 가리키는 보통명사**다 —
  * 계승자의 진짜 이름은 세계관이 정해질 때 붙는다.
  *
- * 능력은 캐릭터가 아니라 유물에서 와야 하지만(ADR-004) 유물은 M3 다.
- * 그때까지는 스킬을 직접 들려준다 — **이 배선은 M3 에서 유물 슬롯으로 교체된다.**
+ * **능력은 캐릭터가 아니라 유물에서 온다** (ADR-004). 이 모듈은 스킬을 만들지 않고
+ * 넘겨받기만 한다 — 만드는 쪽은 `game/partyStore` 의 `partySkills()` 다.
  */
 
 export interface Encounter {
@@ -58,13 +57,26 @@ export function mobTile(actorId: ActorId): number {
   return MOB_TEMPLATES[kind]?.tile ?? 108;
 }
 
+export interface EncounterOptions {
+  readonly mobCount?: number;
+  /** 이미 유물 보정이 적용된 파티. 만드는 쪽은 `game/partyStore` 다. */
+  readonly party?: readonly BattleActor[];
+  /** 파티원이 쓸 수 있는 스킬. **장착 유물에서 나온다** (ADR-004). */
+  readonly partySkills?: Readonly<Record<ActorId, readonly Skill[]>>;
+  readonly inventory?: Inventory;
+}
+
 /** 유적 입구의 표준 조우. 인카운터 테이블이 이걸 고른다. */
-export function ruinEncounter(
-  level: number,
-  mobCount = 2,
-  party: readonly BattleActor[] = starterParty(level),
-  inventory: Inventory = { herb: 3, antidote: 1, 'cleansing-stone': 1, 'ashen-ember': 1 },
-): Encounter {
+export function ruinEncounter(level: number, options: EncounterOptions = {}): Encounter {
+  const mobCount = options.mobCount ?? 2;
+  const party = options.party ?? starterParty(level);
+  const inventory = options.inventory ?? {
+    herb: 3,
+    antidote: 1,
+    'cleansing-stone': 1,
+    'ashen-ember': 1,
+  };
+
   const mobs = Array.from({ length: mobCount }, (_, i) =>
     ruinMob(i % 2 === 0 ? 'remnant' : 'warden', i + 1, level),
   );
@@ -79,10 +91,9 @@ export function ruinEncounter(
   return {
     actors,
     profiles,
-    partySkills: {
-      vanguard: [skill('stone-fist')],
-      caster: [skill('ember-lash'), skill('sundering-arc')],
-    },
+    // 스킬을 여기서 들려주지 않는다. 능력의 출처는 장착 유물이다 (ADR-004).
+    // 넘어오지 않으면 빈 목록 — 유물을 끼우지 않은 파티는 기본 공격만 할 수 있다.
+    partySkills: options.partySkills ?? {},
     inventory,
   };
 }
@@ -128,20 +139,13 @@ export const AREA_LEVELS: Readonly<Record<MapId, number>> = {
 export function rollEncounter(
   mapId: MapId,
   rng: Rng,
-  party?: readonly BattleActor[],
-  inventory?: Inventory,
+  options: EncounterOptions = {},
 ): Encounter {
   const table = ENCOUNTER_TABLES[mapId];
   const entry = pickWeighted(
     table.map((row) => ({ weight: row.weight, value: row })),
     rng,
   );
-  const level = AREA_LEVELS[mapId];
 
-  return ruinEncounter(
-    level,
-    entry.mobCount,
-    party ?? starterParty(level),
-    inventory ?? { herb: 3, antidote: 1, 'cleansing-stone': 1, 'ashen-ember': 1 },
-  );
+  return ruinEncounter(AREA_LEVELS[mapId], { ...options, mobCount: entry.mobCount });
 }
