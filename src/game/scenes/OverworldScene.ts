@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { dialogueScript } from '../../data/dialogue.js';
 import { npcsForMap, type Npc } from '../../data/npcs.js';
 import { portalsForMap } from '../../data/portals.js';
-import { STARTING_MAP, type MapId } from '../../data/maps.js';
+import { zonesForMap } from '../../data/zones.js';
+import { MAP_NAMES, STARTING_MAP, type MapId } from '../../data/maps.js';
 import type { TileMap } from '../../core/world/tilemap.js';
 import {
   directionVector,
@@ -13,6 +14,7 @@ import {
 } from '../../core/world/movement.js';
 import { blockedByOccupants, occupantInFront } from '../../core/world/interaction.js';
 import { portalAt, type Portal } from '../../core/world/portal.js';
+import { zoneAt, type Zone } from '../../core/world/zone.js';
 import {
   advanceCounter,
   startCounter,
@@ -35,10 +37,19 @@ import { assetCatalog } from '../assets/catalog.js';
 import { loadMap } from '../world/mapRegistry.js';
 import { renderTilemapLayer } from '../world/renderTilemap.js';
 import { TextBox } from '../ui/TextBox.js';
-import { markCamera, markDialogue, markMap, markScene, markWalker } from '../domState.js';
+import { LocationBanner } from '../ui/LocationBanner.js';
+import { markCamera, markDialogue, markMap, markScene, markWalker, markZone } from '../domState.js';
 
 /** 한 칸 이동에 걸리는 시간. 이 동안 입력은 무시된다. */
 const STEP_DURATION = 110;
+
+/**
+ * `tiles-dungeon` 시트의 주인공 프레임.
+ *
+ * NPC(84·96·99)·적(108·122)과 겹치지 않으면서 **가장 눈에 띄는 칸**을 골랐다.
+ * 스크린샷으로 진행을 확인하는 이상, 주변에 묻히는 주인공은 없는 것과 같다.
+ */
+const PLAYER_TILE = 110;
 
 /** 씬을 다시 시작할 때 넘기는 값. 층을 오갈 때 어디로 내려설지 알려준다. */
 export interface OverworldEntry {
@@ -61,10 +72,12 @@ export class OverworldScene extends Phaser.Scene {
   private walker!: Walker;
   private npcs: readonly Npc[] = [];
   private portals: readonly Portal[] = [];
+  private zones: readonly Zone[] = [];
 
   private playerView!: Phaser.GameObjects.Container;
   private facingPip!: Phaser.GameObjects.Rectangle;
   private textBox!: TextBox;
+  private banner!: LocationBanner;
 
   private moveKeys!: Record<Direction, Phaser.Input.Keyboard.Key[]>;
   private interactKeys: Phaser.Input.Keyboard.Key[] = [];
@@ -93,6 +106,7 @@ export class OverworldScene extends Phaser.Scene {
     this.map = loadMap(this.mapId);
     this.npcs = npcsForMap(this.mapId);
     this.portals = portalsForMap(this.mapId);
+    this.zones = zonesForMap(this.mapId);
     this.stepping = false;
     this.leaving = false;
     this.dialogue = undefined;
@@ -108,12 +122,14 @@ export class OverworldScene extends Phaser.Scene {
     this.playerView = this.createPlayerView();
     world.add(this.playerView);
 
+    this.banner = new LocationBanner(this);
     this.textBox = new TextBox(this);
     this.bindKeys();
 
     this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
     markWalker(this.walker);
     markDialogue(undefined);
+    this.updateLocation();
     this.updateFacingPip();
     this.followCamera();
   }
@@ -155,6 +171,9 @@ export class OverworldScene extends Phaser.Scene {
     );
     this.walker = walker;
     markWalker(walker);
+    // 표시는 걸음이 시작될 때 갱신한다. 트윈이 끝나기를 기다리면 구역 경계에서
+    // 한 걸음 늦게 "안전" 이 떠, 이미 위험한 칸에 서 있는데도 안전해 보인다.
+    this.updateLocation();
     this.updateFacingPip();
 
     if (!moved) return;
@@ -181,6 +200,11 @@ export class OverworldScene extends Phaser.Scene {
   private checkEncounter(): void {
     if (!encountersEnabled()) return;
 
+    // 안전지대에서는 걸음을 세지도 않는다. 세기만 하고 발생만 막으면
+    // 야영지를 오래 돌아다닌 뒤 한 발짝 나가자마자 전투가 터진다 — 안전지대가
+    // 오히려 함정이 되는 셈이라, 안전한 걸음은 아예 없던 것으로 친다.
+    if (!this.currentZone()?.encounters) return;
+
     const outcome = advanceCounter(this.encounterCounter);
     this.encounterCounter = outcome.counter;
     if (!outcome.triggered) return;
@@ -199,6 +223,26 @@ export class OverworldScene extends Phaser.Scene {
         arrival: { position: this.walker.position, facing: this.walker.facing },
       },
     } satisfies BattleEntry);
+  }
+
+  // ── 구역 ────────────────────────────────────────────────────────────────
+
+  private currentZone(): Zone | undefined {
+    return zoneAt(this.zones, this.walker.position.x, this.walker.position.y);
+  }
+
+  /**
+   * 지금 어디에 서 있는지를 화면과 DOM 에 반영한다.
+   *
+   * 구역을 빠뜨린 칸은 안전한 쪽으로 본다 (`core/world/zone.ts`). 그런 칸이 남아 있으면
+   * 콘텐츠 테스트가 먼저 잡으므로, 여기서는 조용히 넘어가도 된다.
+   */
+  private updateLocation(): void {
+    const zone = this.currentZone();
+    const encounters = zone?.encounters ?? false;
+
+    this.banner.show(MAP_NAMES[this.mapId], zone?.name, encounters);
+    markZone(zone?.id, encounters);
   }
 
   // ── 층 이동 ─────────────────────────────────────────────────────────────
@@ -322,13 +366,16 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * 주인공.
+   *
+   * Tiny Dungeon 의 캐릭터 타일을 쓴다 (ADR-006 색인 경유). **한 방향뿐**이라
+   * 어디를 보고 있는지는 여전히 표식이 말해준다 — 4방향 걷기 프레임은 백로그의 사람 몫이다.
+   */
   private createPlayerView(): Phaser.GameObjects.Container {
-    const size = this.map.tileWidth;
-
-    // 모래 바닥과 대비되는 색을 쓴다. 스크린샷으로 진행을 확인하는 이상,
-    // 배경에 묻히는 표식은 없는 것과 같다. 실제 캐릭터 스프라이트가 들어오면 교체된다.
-    const body = this.add.rectangle(0, 0, size - 4, size - 4, 0xb0304a);
+    const body = this.add.image(0, 0, 'tiles-dungeon', PLAYER_TILE);
     this.facingPip = this.add.rectangle(0, 0, 4, 4, 0xf2e6c9);
+    this.facingPip.setStrokeStyle(1, 0x2a1e14);
 
     return this.add.container(0, 0, [body, this.facingPip]);
   }

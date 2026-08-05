@@ -60,6 +60,11 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   await expect(page.locator('body')).toHaveAttribute('data-player', '8,6');
   await expect(page.locator('body')).toHaveAttribute('data-camera', '0,0');
 
+  // ── 구역 표시 (T-030) ────────────────────────────────────────────────────
+  // 시작 지점은 야영지 안이고, 야영지는 안전지대다.
+  await expect(page.locator('body')).toHaveAttribute('data-zone', 'entrance-camp');
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'safe');
+
   // ── NPC 충돌과 대화 (T-010) ──────────────────────────────────────────────
   // 조사원 NPC 가 (8,4) 에 서 있다. 한 칸 올라가면 바로 앞이다.
   await expect(page.locator('body')).toHaveAttribute('data-dialogue', 'closed');
@@ -119,6 +124,10 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
     timeout: 10_000,
   });
   await expect(page.locator('body')).toHaveAttribute('data-player', '5,6');
+
+  // 지하에는 안전지대가 없다. 층이 바뀌면 표시도 따라 바뀐다.
+  await expect(page.locator('body')).toHaveAttribute('data-zone', 'depths-landing');
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'wild');
   await page.screenshot({ path: `${SHOT_DIR}/depths.png` });
 
   // 도착 지점은 계단 옆이다. 계단 위였다면 여기서 무한히 오갔을 것이다.
@@ -136,6 +145,60 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });
 
+/** 타이틀을 넘겨 탐색 씬까지 들어간다. 인카운터는 켜진 상태다. */
+async function enterOverworld(page: Page): Promise<void> {
+  await page.goto('/');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+}
+
+/**
+ * 야영지(8,6) 에서 기둥 홀(17,7) 로 걸어 나간다.
+ *
+ * y=7 은 야영지와 기둥 홀을 잇는 복도라 NPC 도 계단도 없다 — 도중에 다른 일이 끼어들지 않는다.
+ */
+async function walkOutOfCamp(page: Page): Promise<void> {
+  await stepKey(page, 'ArrowDown');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,7');
+
+  for (let i = 0; i < 9; i += 1) await stepKey(page, 'ArrowRight');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '17,7');
+}
+
+/**
+ * 안전지대에서는 전투가 벌어지지 않는다 (T-030).
+ *
+ * 이 테스트가 없으면 회귀를 알아챌 수 없다. 안전지대는 **아무 일도 일어나지 않음**으로만
+ * 드러나므로, 임계(8~20걸음)를 훌쩍 넘게 걸어보는 것 말고는 확인할 방법이 없다.
+ * 마지막에 실제로 전투가 벌어지는 것까지 봐야 "인카운터 자체가 꺼져 있었을 뿐" 이 아님이 증명된다.
+ */
+test('야영지에서는 아무리 걸어도 전투가 벌어지지 않는다', async ({ page }) => {
+  await enterOverworld(page);
+
+  await expect(page.locator('body')).toHaveAttribute('data-zone', 'entrance-camp');
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'safe');
+
+  // 임계 최대치(20걸음)의 두 배를 걷는다.
+  for (let i = 0; i < 40; i += 1) {
+    await stepKey(page, i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+    expect(
+      await page.locator('body').getAttribute('data-scene'),
+      `야영지 ${i + 1}걸음째에 전투가 벌어졌습니다`,
+    ).toBe('overworld');
+  }
+
+  await page.screenshot({ path: `${SHOT_DIR}/camp.png` });
+
+  // 한 발짝 나가면 위험 구역이다 — 인카운터가 꺼져 있던 것이 아니다.
+  await walkOutOfCamp(page);
+  await expect(page.locator('body')).toHaveAttribute('data-zone', 'pillar-hall');
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'wild');
+});
+
 /**
  * 탐색 → 전투 → 복귀가 하나의 흐름으로 이어진다 (T-021).
  *
@@ -150,15 +213,12 @@ test('탐색 중 인카운터가 발생하고 전투 후 제자리로 돌아온�
     errors.push(`[pageerror] ${error.message}`);
   });
 
-  await page.goto('/');
-  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
-  await page.locator('#game canvas').click();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
-    timeout: 10_000,
-  });
+  await enterOverworld(page);
 
-  // 입구 홀 안에서 좌우로 오간다. 임계는 8~20걸음이므로 넉넉히 걷는다.
+  // 야영지는 안전지대라 전투가 벌어지지 않는다 (T-030). 기둥 홀까지 나가야 한다.
+  await walkOutOfCamp(page);
+
+  // 기둥 홀 안에서 좌우로 오간다. 임계는 8~20걸음이므로 넉넉히 걷는다.
   for (let i = 0; i < 40; i += 1) {
     if ((await page.locator('body').getAttribute('data-scene')) === 'battle') break;
     await stepKey(page, i % 2 === 0 ? 'ArrowRight' : 'ArrowLeft');

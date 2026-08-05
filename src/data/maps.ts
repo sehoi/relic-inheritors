@@ -14,6 +14,17 @@ export const MAP_FILES: Readonly<Record<MapId, string>> = {
   'ruin-depths': 'src/data/maps/ruin-depths.tmj',
 };
 
+/**
+ * 화면에 띄우는 맵 이름 (가제).
+ *
+ * 맵 id 는 식별자라 그대로 보여줄 수 없다. 고유명사는 아직 확정하지 않으므로(GDD §10)
+ * 장소의 성격을 가리키는 보통명사를 쓴다. 더 좁은 단위의 이름은 `data/zones.ts` 가 갖는다.
+ */
+export const MAP_NAMES: Readonly<Record<MapId, string>> = {
+  'ruin-entrance': '유적 입구',
+  'ruin-depths': '유적 지하 1층',
+};
+
 /** 게임을 시작하는 맵. */
 export const STARTING_MAP: MapId = 'ruin-entrance';
 
