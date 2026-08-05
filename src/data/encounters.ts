@@ -1,5 +1,6 @@
 import type { AiProfile } from '../core/battle/ai.js';
-import type { ActorId, BattleActor } from '../core/battle/index.js';
+import type { ActorId, BattleActor, Stats } from '../core/battle/index.js';
+import { ROSTER } from './party.js';
 import type { Inventory } from '../core/battle/item.js';
 import type { Skill } from '../core/battle/skill.js';
 import { pickWeighted, type EncounterTuning } from '../core/world/encounter.js';
@@ -28,14 +29,20 @@ export interface Encounter {
   readonly inventory: Inventory;
 }
 
+/**
+ * 파티를 만든다. **인원과 역할은 `data/party.ts` 가 정한다** — 여기 적어두면
+ * 시뮬레이터와 게임이 서로 다른 편성을 쓰게 된다 (실제로 그랬다).
+ */
 export function starterParty(level: number): BattleActor[] {
-  const stats = statsAtLevel(PARTY_CURVES, level);
-  return [
-    makeCombatant('vanguard', 'party', stats, { name: '전위' }),
-    makeCombatant('caster', 'party', { ...stats, mag: Math.round(stats.mag * 1.3) }, {
-      name: '술사',
-    }),
-  ];
+  const base = statsAtLevel(PARTY_CURVES, level);
+
+  return ROSTER.map((member) => {
+    const stats = { ...base };
+    for (const [key, scale] of Object.entries(member.statScale ?? {}) as [keyof Stats, number][]) {
+      stats[key] = Math.round(base[key] * scale);
+    }
+    return makeCombatant(member.id, 'party', stats, { name: member.name });
+  });
 }
 
 const MOB_TEMPLATES = {

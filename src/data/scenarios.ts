@@ -4,6 +4,7 @@ import type { Skill } from '../core/battle/skill.js';
 import type { SimSetup } from '../core/battle/simulate.js';
 import { activesOf, applyStatMods, sumStatMods, type Relic, type RelicId } from '../core/relic/index.js';
 import { aiProfile } from './ai.js';
+import { PARTY_SIZE } from './party.js';
 import {
   BOSS_MULTIPLIERS,
   MOB_CURVES,
@@ -19,8 +20,14 @@ import {
  * 서로 다른 편성으로 재면 "테스트는 통과하는데 리포트는 이상한" 상태가 된다.
  */
 
-const PARTY_SIZE = 4;
-const MOB_COUNT = 3;
+/**
+ * 표준 잡몹전의 적 수.
+ *
+ * **실제로 가장 자주 나오는 편성이어야 한다** (`ENCOUNTER_TABLES` 의 최대 가중치 = 2마리).
+ * 예전 값 3은 파티가 4인이던 시절의 것이고, 실제 게임에서는 드문 조우다 —
+ * 드문 편성으로 "표준" 전투 길이를 재고 있었던 셈이다.
+ */
+const MOB_COUNT = 2;
 
 /** 파티 스탯을 비율로 비튼다. 방어 편향 검사(GDD §5.5)에 쓴다. */
 export interface StatSkew {
@@ -40,6 +47,12 @@ function skewStats(stats: Stats, skew: StatSkew): Stats {
   };
 }
 
+/**
+ * 측정용 파티.
+ *
+ * **인원은 `data/party.ts` 를 따른다.** 여기 숫자를 따로 적어두었더니 게임이 2인인 동안
+ * 시뮬레이터가 4인을 재고 있었다 — 그 상태의 측정은 존재하지 않는 편성에 대한 것이었다.
+ */
 function buildParty(level: number, skew: StatSkew = {}): BattleActor[] {
   const stats = skewStats(statsAtLevel(PARTY_CURVES, level), skew);
   return Array.from({ length: PARTY_SIZE }, (_, i) =>

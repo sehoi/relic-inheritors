@@ -13,7 +13,8 @@ import {
   topBuilds,
   type RelicBuild,
 } from '../../src/core/relic/builds.js';
-import { SLOTS_PER_MEMBER, type Relic } from '../../src/core/relic/index.js';
+import type { Relic } from '../../src/core/relic/index.js';
+import { TOTAL_SLOTS } from '../../src/data/party.js';
 import { BATTLE_TUNING } from '../../src/data/battle.js';
 import { BUILD_SWEEP, MEASURED_RELICS, RELIC_INVARIANTS } from '../../src/data/invariants.js';
 import { RELICS, relic } from '../../src/data/relics.js';
@@ -35,7 +36,7 @@ import { relicFight } from '../../src/data/scenarios.js';
  * 2. **실제 데이터 검사** — `data/relics.ts` 를 훑는다.
  */
 
-const SLOTS = SLOTS_PER_MEMBER * 2;
+const SLOTS = TOTAL_SLOTS;
 const seeds = seedRange(1, BUILD_SWEEP.trials);
 
 interface Scored {
