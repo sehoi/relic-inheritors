@@ -21,6 +21,7 @@ const FLAT: DamageTuning = {
   critBaseChance: 0,
   critLukFactor: 0,
   critMaxChance: 0.5,
+  guardMultiplier: 0.5,
   minDamage: 1,
 };
 
@@ -150,6 +151,26 @@ describe('치명타', () => {
       if (resolveDamage(actor(), actor(), BASIC, shared, tuning).critical) crits += 1;
     }
     expect(crits / trials).toBeCloseTo(0.25, 1);
+  });
+});
+
+describe('방어', () => {
+  const guarding: BattleActor = { ...actor(), guarding: true };
+
+  it('배율만큼 피해가 줄어든다', () => {
+    const result = resolveDamage(actor(), guarding, BASIC, rng(), FLAT);
+    expect(result.guarded).toBe(true);
+    expect(result.amount).toBe(15); // 30 * 0.5
+  });
+
+  it('관통 하한 뒤에 곱해진다 — 방어를 고르는 선택에는 값이 있어야 한다', () => {
+    // raw 40, 하한 8. 방어 중이면 4 가 되어야 한다.
+    const tank: BattleActor = { ...actor({ def: 10_000 }), guarding: true };
+    expect(resolveDamage(actor(), tank, BASIC, rng(), FLAT).amount).toBe(4);
+  });
+
+  it('방어 중이 아니면 배율이 적용되지 않는다', () => {
+    expect(resolveDamage(actor(), actor(), BASIC, rng(), FLAT).guarded).toBe(false);
   });
 });
 
