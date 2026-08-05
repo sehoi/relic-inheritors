@@ -119,6 +119,74 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     erosionFactor: 1.2,
     lore: '불을 담는 그릇인데, 안쪽이 비어 있는 쪽이 더 밝다.',
   },
+
+  // ── T-028b: 수직 슬라이스 분량 (GDD §8) ───────────────────────────────────
+
+  'rot-idol': {
+    id: 'rot-idol',
+    name: '삭은 우상',
+    tier: 1,
+    element: 'earth',
+    tags: ['hollow'],
+    statMods: { atk: 4, maxHp: 12, res: -2 },
+    actives: [{ skill: skill('rot-touch'), unlockRank: 0 }],
+    erosionFactor: 0.85,
+    lore: '누구를 본떴는지 알 수 없을 만큼 삭았다. 그래서 아직 남아 있다.',
+  },
+
+  'brine-crown': {
+    id: 'brine-crown',
+    name: '소금 관',
+    tier: 1,
+    element: 'water',
+    tags: ['tide', 'ward'],
+    statMods: { res: 5, maxMp: 3, agi: -1 },
+    actives: [{ skill: skill('mirror-haze'), unlockRank: 0 }],
+    erosionFactor: 0.95,
+    lore: '쓴 사람의 머리 모양이 그대로 남아 있다. 벗지 못했던 모양이다.',
+  },
+
+  'deep-lens': {
+    id: 'deep-lens',
+    name: '깊은 렌즈',
+    tier: 2,
+    element: 'water',
+    tags: ['tide', 'storm'],
+    statMods: { mag: 6, agi: 3, def: -2 },
+    actives: [{ skill: skill('deep-current'), unlockRank: 0 }],
+    erosionFactor: 1.25,
+    lore: '들여다보면 바닥이 보이는데, 그 바닥이 어디인지는 아무도 말하지 않았다.',
+  },
+
+  'graven-hand': {
+    id: 'graven-hand',
+    name: '새겨진 손',
+    tier: 3,
+    element: 'earth',
+    tags: ['stone', 'hollow'],
+    statMods: { atk: 9, def: 4, agi: -2 },
+    actives: [
+      { skill: skill('stone-fist'), unlockRank: 0 },
+      { skill: skill('stone-toll'), unlockRank: 2 },
+    ],
+    erosionFactor: 1.45,
+    lore: '손등에 새긴 글씨가 안쪽까지 파고들어 있었다.',
+  },
+
+  'ember-crown': {
+    id: 'ember-crown',
+    name: '잿불 관',
+    tier: 3,
+    element: 'fire',
+    tags: ['ember', 'ward'],
+    statMods: { mag: 8, maxMp: 6, res: -2 },
+    actives: [
+      { skill: skill('ember-lash'), unlockRank: 0 },
+      { skill: skill('ember-burst'), unlockRank: 2 },
+    ],
+    erosionFactor: 1.5,
+    lore: '불을 다루던 자들이 마지막에 쓴 것이다. 마지막이었던 이유는 적혀 있지 않다.',
+  },
 };
 
 export const relicRegistry = createRegistry('유물', RELICS, (relic) => relic.id);

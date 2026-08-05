@@ -85,6 +85,48 @@ export const SKILLS: Readonly<Record<string, Skill>> = {
     attack: { power: 170, element: 'fire', kind: 'magical' },
   },
 
+  // ── T-028b: 수직 슬라이스 분량을 채우며 들어온 액티브 ──────────────────────
+  //
+  // 침식은 **실효 위력** 순서를 따른다 (ADR-014). 아래 주석의 숫자가 그 계산이다.
+
+  'rot-touch': {
+    id: 'rot-touch',
+    name: '삭는 손길',
+    mpCost: 4,
+    // 실효 131 (115 + 독 40 × 0.4)
+    erosion: 15,
+    attack: { power: 115, element: 'earth', kind: 'physical' },
+    // 독은 가장 싼 상태이상이라 확률을 높게 준다. 시간이 걸리고 전투가 끝나면 사라진다.
+    inflict: { kind: 'poison', chance: 0.4 },
+  },
+
+  'mirror-haze': {
+    id: 'mirror-haze',
+    name: '물거울 안개',
+    mpCost: 6,
+    // 실효 138 (120 + 혼란 60 × 0.3)
+    erosion: 19,
+    attack: { power: 120, element: 'water', kind: 'magical' },
+    inflict: { kind: 'confusion', chance: 0.3 },
+  },
+
+  'deep-current': {
+    id: 'deep-current',
+    name: '깊은 물살',
+    mpCost: 8,
+    erosion: 22,
+    attack: { power: 145, element: 'water', kind: 'magical' },
+  },
+
+  // 상위 등급 유물의 잠긴 액티브. 0단계에 두면 그 유물이 사실상 필수가 된다 (T-035 실측).
+  'stone-toll': {
+    id: 'stone-toll',
+    name: '돌의 조종',
+    mpCost: 12,
+    erosion: 34,
+    attack: { power: 190, element: 'earth', kind: 'physical' },
+  },
+
   // 공허는 깎기보다 **막는다**. 침묵은 스킬을 봉인하므로 위력이 낮아도 값어치가 있다.
   'hollow-bite': {
     id: 'hollow-bite',

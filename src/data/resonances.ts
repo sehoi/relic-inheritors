@@ -38,8 +38,19 @@ export const RESONANCES: Readonly<Record<string, Resonance>> = {
     description: '빈 곳에서 울리는 것은 되돌아오지 않는다.',
   },
 
-  // 아직 성립하지 않는다 — 같은 태그의 유물이 둘 필요하다.
-  // 유물이 늘어날수록 성립 가능한 공명이 늘어난다는 구조를 보여주는 자리다.
+  // 조건이 셋이라 성립시키려면 슬롯을 거의 다 써야 한다.
+  // 그만큼 값어치가 커야 조합 설계의 목표가 된다 (GDD §5.2).
+  'tidal-ward': {
+    id: 'tidal-ward',
+    name: '밀려와도 닫힌 문',
+    conditions: [
+      { tag: 'tide', count: 2 },
+      { tag: 'ward', count: 1 },
+    ],
+    statMods: { res: 6, maxHp: 14, agi: -1 },
+    description: '물은 문을 두드리지만 문은 물을 기억하지 않는다.',
+  },
+
   'twin-ember': {
     id: 'twin-ember',
     name: '겹불',
