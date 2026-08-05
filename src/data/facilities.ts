@@ -26,6 +26,14 @@ export const FACILITIES_BY_MAP: Readonly<Partial<Record<MapId, readonly Facility
       // 70번 — 나무 가구. 쉬어가는 자리로 읽힌다.
       tile: 70,
     },
+    {
+      id: 'shop-stall',
+      position: { x: 28, y: 16 },
+      kind: 'shop',
+      name: '상점',
+      // 67번 — 나무 궤짝.
+      tile: 67,
+    },
   ],
 };
 

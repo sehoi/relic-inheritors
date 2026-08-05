@@ -4,6 +4,7 @@ import type { Skill } from '../core/battle/skill.js';
 import type { AilmentState } from '../core/battle/status.js';
 import { createRng, restoreRng, type Rng } from '../core/rng/index.js';
 import { cleansedErosion, type CleansingTuning } from '../core/world/facility.js';
+import { buy, buyBlockReason, type StockEntry } from '../core/world/shop.js';
 import {
   SAVE_VERSION,
   type SaveData,
@@ -97,6 +98,25 @@ export function coinCount(): number {
 
 export function gainCoins(amount: number): void {
   if (amount > 0) coins += Math.floor(amount);
+}
+
+/**
+ * 상점에서 하나 산다. 산 값을 돌려주고, 못 사면 사유를 돌려준다 (T-041b).
+ *
+ * 판정은 `core/world/shop` 이 한다 — 여기서 다시 판단하면 두 곳이 반드시 어긋난다.
+ */
+export function buyItem(
+  stock: readonly StockEntry[],
+  itemId: string,
+): { readonly spent: number } | { readonly blocked: string } {
+  const blocked = buyBlockReason(stock, itemId, coins, inventory);
+  if (blocked !== undefined) return { blocked };
+
+  const before = coins;
+  const result = buy(stock, itemId, coins, inventory);
+  inventory = result.inventory;
+  coins = result.coins;
+  return { spent: before - coins };
 }
 
 /**

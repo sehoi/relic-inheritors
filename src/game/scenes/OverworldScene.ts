@@ -43,6 +43,7 @@ import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import type { RelicEntry } from './RelicScene.js';
 import type { SaveEntry } from './SaveScene.js';
+import type { ShopEntry } from './ShopScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
 import {
   TEXT_BOX_LAYOUT,
@@ -394,6 +395,16 @@ export class OverworldScene extends Phaser.Scene {
   private useFacility(facility: Facility): void {
     if (facility.kind === 'inn') {
       this.useInn(facility);
+      return;
+    }
+    if (facility.kind === 'shop') {
+      this.leaving = true;
+      this.scene.start('shop', {
+        returnTo: {
+          mapId: this.mapId,
+          arrival: { position: this.walker.position, facing: this.walker.facing },
+        },
+      } satisfies ShopEntry);
       return;
     }
     if (facility.kind !== 'cleansing') {

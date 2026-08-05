@@ -5,6 +5,7 @@ import { OverworldScene } from './game/scenes/OverworldScene.js';
 import { BattleScene } from './game/scenes/BattleScene.js';
 import { RelicScene } from './game/scenes/RelicScene.js';
 import { SaveScene } from './game/scenes/SaveScene.js';
+import { ShopScene } from './game/scenes/ShopScene.js';
 
 /** 16x16 타일 기준 내부 해상도 (GDD §7). 실제 표시는 정수 배율로 확대한다. */
 const GAME_WIDTH = 480;
@@ -22,7 +23,15 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, TitleScene, OverworldScene, BattleScene, RelicScene, SaveScene],
+  scene: [
+    BootScene,
+    TitleScene,
+    OverworldScene,
+    BattleScene,
+    RelicScene,
+    SaveScene,
+    ShopScene,
+  ],
 };
 
 new Phaser.Game(config);
