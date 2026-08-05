@@ -11,7 +11,7 @@ import type { Walker } from '../core/world/movement.js';
  * 이건 디버그 편의 기능이 아니라 **자율 검증의 인터페이스다.**
  * 씬이나 상태를 추가하면 여기도 함께 갱신한다.
  */
-export const SCENE_KEYS = ['boot', 'title', 'overworld'] as const;
+export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle'] as const;
 
 export type SceneKey = (typeof SCENE_KEYS)[number];
 
@@ -32,6 +32,20 @@ export function markCamera(scroll: { x: number; y: number }): void {
 /** 지금 어느 맵에 있는가. 층 이동이 실제로 일어났는지 스모크가 이걸로 판정한다. */
 export function markMap(mapId: string): void {
   document.body.dataset['map'] = mapId;
+}
+
+/**
+ * 전투 진행 상태.
+ *
+ * 스모크가 이걸 보고 "지금 입력을 받는 중인지, 연출 중인지, 끝났는지" 를 판정한다.
+ * 애니메이션이 도는 동안 키를 넣으면 씹히므로, 대기 조건이 없으면 테스트가 불안정해진다.
+ */
+export type BattlePhase = 'command' | 'skill' | 'item' | 'target' | 'playing' | 'over';
+
+export function markBattle(phase: BattlePhase, outcome?: string): void {
+  document.body.dataset['battlePhase'] = phase;
+  if (outcome === undefined) delete document.body.dataset['battleOutcome'];
+  else document.body.dataset['battleOutcome'] = outcome;
 }
 
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */

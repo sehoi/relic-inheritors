@@ -133,3 +133,54 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });
+
+/**
+ * 전투 한 판을 끝까지 진행한다 (T-020).
+ *
+ * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —
+ * 전투가 도중에 멈추거나 예외로 죽으면 여기서 드러난다.
+ */
+test('전투를 시작해 끝까지 진행한다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  // 탐색 → 전투 경로는 T-021 이 만든다. 그전까지는 개발용 진입점을 쓴다.
+  await page.goto('/?scene=battle');
+
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 20_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'command', {
+    timeout: 20_000,
+  });
+
+  await mkdir(SHOT_DIR, { recursive: true });
+  await page.screenshot({ path: `${SHOT_DIR}/battle.png` });
+  await page.locator('#game canvas').click();
+
+  // 커맨드 첫 항목은 공격. 대상 선택까지 확인 후 반복해서 끝을 낸다.
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'target');
+  await page.screenshot({ path: `${SHOT_DIR}/battle-target.png` });
+
+  for (let i = 0; i < 120; i += 1) {
+    const phase = await page.locator('body').getAttribute('data-battle-phase');
+    if (phase === 'over') break;
+    if (phase === 'command' || phase === 'target') {
+      await stepKey(page, 'Enter');
+    } else {
+      await page.waitForTimeout(140);
+    }
+  }
+
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'over', {
+    timeout: 30_000,
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-battle-outcome', /victory|defeat|fled/);
+  await page.screenshot({ path: `${SHOT_DIR}/battle-end.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
