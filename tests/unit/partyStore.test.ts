@@ -7,8 +7,10 @@ import {
   unequip,
 } from '../../src/core/relic/index.js';
 import {
+  captureSave,
   currentResonances,
   getAttunement,
+  getInventory,
   getLoadout,
   ownedRelics,
   recordSkillUses,
@@ -16,10 +18,20 @@ import {
   partyForBattle,
   partySkills,
   resetParty,
+  restoreSave,
+  saveInventory,
   saveParty,
   setLoadout,
+  worldRandom,
 } from '../../src/game/partyStore.js';
-import { relic } from '../../src/data/relics.js';
+import {
+  parseSave,
+  validateSaveReferences,
+  type SavedLocation,
+} from '../../src/core/save/index.js';
+import { ITEMS } from '../../src/data/items.js';
+import { MAP_IDS } from '../../src/data/maps.js';
+import { RELICS, relic } from '../../src/data/relics.js';
 import { resonance } from '../../src/data/resonances.js';
 
 /**
@@ -152,6 +164,91 @@ describe('partyStore', () => {
   it('끼우지 않은 유물에는 쌓이지 않는다', () => {
     recordSkillUses({ 'sundering-arc': 10 }); // sundering-core 는 장착돼 있지 않다
     expect(getAttunement()['sundering-core']).toBeUndefined();
+  });
+
+  describe('세이브 (T-037)', () => {
+    const HERE: SavedLocation = { mapId: 'ruin-entrance', x: 8, y: 6, facing: 'down' };
+    const META = { savedAt: 1_760_000_000_000, playtimeMs: 90_000 };
+
+    /** 기본값과 구분되는 상태를 만든다. 전부 기본값이면 복원이 됐는지 알 수 없다. */
+    function scramble(): void {
+      setLoadout(unequip(getLoadout(), 'vanguard', 0));
+      recordSkillUses({ 'ember-lash': 3 });
+      saveParty(partyForBattle().map((m) => ({ ...m, hp: 7, mp: 2, erosion: 11 })));
+      saveInventory({ herb: 1 });
+      worldRandom().int(1, 100); // 난수를 소비해 상태를 옮긴다
+    }
+
+    it('뜬 세이브가 스키마를 통과한다', () => {
+      scramble();
+      // JSON 을 거쳐야 실제 저장 경로와 같아진다 — 직렬화되지 않는 값이 섞이면 여기서 걸린다.
+      const raw: unknown = JSON.parse(JSON.stringify(captureSave(HERE, META)));
+      expect(() => parseSave(raw)).not.toThrow();
+    });
+
+    it('뜬 세이브가 실제 콘텐츠만 가리킨다', () => {
+      const save = parseSave(JSON.parse(JSON.stringify(captureSave(HERE, META))));
+      expect(() =>
+        validateSaveReferences(save, {
+          relics: Object.keys(RELICS),
+          maps: [...MAP_IDS],
+          items: Object.keys(ITEMS),
+        }),
+      ).not.toThrow();
+    });
+
+    it('저장하고 불러오면 상태가 그대로 돌아온다', () => {
+      scramble();
+      const save = parseSave(JSON.parse(JSON.stringify(captureSave(HERE, META))));
+
+      const before = {
+        loadout: getLoadout(),
+        attunement: { ...getAttunement() },
+        inventory: { ...getInventory() },
+        owned: [...ownedRelics()],
+        party: partyForBattle().map((m) => ({ id: m.id, hp: m.hp, mp: m.mp, erosion: m.erosion })),
+        resonances: currentResonances().map((r) => r.id),
+      };
+
+      resetParty();
+      restoreSave(save);
+
+      expect(getLoadout()).toEqual(before.loadout);
+      expect(getAttunement()).toEqual(before.attunement);
+      expect(getInventory()).toEqual(before.inventory);
+      expect(ownedRelics()).toEqual(before.owned);
+      expect(currentResonances().map((r) => r.id)).toEqual(before.resonances);
+      expect(
+        partyForBattle().map((m) => ({ id: m.id, hp: m.hp, mp: m.mp, erosion: m.erosion })),
+      ).toEqual(before.party);
+    });
+
+    it('불러온 뒤 월드 난수가 이어진다 (저장·로드로 조우를 조작할 수 없다)', () => {
+      // 시드만 저장했다면 여기서 수열이 처음으로 되돌아간다 (ADR-002).
+      const save = parseSave(JSON.parse(JSON.stringify(captureSave(HERE, META))));
+      const expected = Array.from({ length: 5 }, () => worldRandom().int(1, 1000));
+
+      resetParty();
+      restoreSave(save);
+
+      expect(Array.from({ length: 5 }, () => worldRandom().int(1, 1000))).toEqual(expected);
+    });
+
+    it('숙련도가 세이브를 건너 살아남는다 (GDD §5.3)', () => {
+      recordSkillUses({ 'ember-lash': 4 });
+      const save = parseSave(JSON.parse(JSON.stringify(captureSave(HERE, META))));
+
+      resetParty();
+      expect(relicRanks()['ember-coil']).toBe(0);
+
+      restoreSave(save);
+      expect(relicRanks()['ember-coil']).toBe(1);
+    });
+
+    it('스탯은 저장하지 않는다 (불러올 때마다 보정이 겹쳐 쌓인다)', () => {
+      const save = captureSave(HERE, META);
+      expect(JSON.stringify(save)).not.toContain('maxHp');
+    });
   });
 
   it('전멸 후 초기화하면 로드아웃과 상태가 되돌아간다', () => {

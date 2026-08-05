@@ -2,7 +2,13 @@ import type { ActorId, BattleActor } from '../core/battle/index.js';
 import type { Inventory } from '../core/battle/item.js';
 import type { Skill } from '../core/battle/skill.js';
 import type { AilmentState } from '../core/battle/status.js';
-import { createRng, type Rng } from '../core/rng/index.js';
+import { createRng, restoreRng, type Rng } from '../core/rng/index.js';
+import {
+  SAVE_VERSION,
+  type SaveData,
+  type SavedLocation,
+  type SavedVitals,
+} from '../core/save/index.js';
 import {
   activesOf,
   allEquipped,
@@ -64,6 +70,8 @@ let attunement: Attunement = {};
 let inventory: Inventory = INITIAL_INVENTORY;
 let loadout: Loadout | undefined;
 let worldRng: Rng | undefined;
+/** 지닌 유물. 세이브에서 복원되며, 회수 지점(T-039)이 생기면 여기가 늘어난다. */
+let owned: readonly string[] = STARTING_RELICS;
 
 /**
  * 월드 난수. 인카운터 발생과 조우 구성이 여기서 나온다.
@@ -80,7 +88,12 @@ function basePartyMembers(): readonly BattleActor[] {
 }
 
 export function ownedRelics(): readonly string[] {
-  return STARTING_RELICS;
+  return owned;
+}
+
+/** 유물을 새로 얻는다. 이미 지닌 것이면 아무 일도 없다 (회수 지점은 T-039). */
+export function gainRelic(relicId: string): void {
+  if (!owned.includes(relicId)) owned = [...owned, relicId];
 }
 
 /**
@@ -240,11 +253,82 @@ export function saveInventory(next: Inventory): void {
   inventory = next;
 }
 
-/** 전멸했을 때. 세이브가 생기면 마지막 저장 지점 복원으로 바뀐다. */
+/** 전멸했을 때. 세이브 슬롯 UI(T-038)가 붙으면 마지막 저장 지점 복원이 선택지로 추가된다. */
 export function resetParty(): void {
   vitals = undefined;
   inventory = INITIAL_INVENTORY;
   loadout = undefined;
   worldRng = undefined;
   attunement = {};
+  owned = STARTING_RELICS;
+}
+
+// ── 세이브 (T-037) ────────────────────────────────────────────────────────
+
+/**
+ * 지금 상태를 세이브 자료로 뜬다.
+ *
+ * **스탯은 담지 않는다.** 유물 보정이 적용된 스탯을 저장하면 불러올 때마다 보정이 겹쳐 쌓인다
+ * — 저장하는 것은 "지금 얼마나 다쳤는가" 뿐이라는 이 모듈의 원칙이 세이브에도 그대로 간다.
+ *
+ * 시각과 플레이 시간은 넘겨받는다. 이 모듈도 시계를 갖지 않는 편이 테스트하기 쉽다.
+ */
+export function captureSave(
+  location: SavedLocation,
+  meta: { readonly savedAt: number; readonly playtimeMs: number },
+): SaveData {
+  const party: Record<ActorId, SavedVitals> = {};
+  for (const member of basePartyMembers()) {
+    const saved = vitals?.[member.id];
+    const stats = member.stats;
+    party[member.id] = {
+      hp: saved?.hp ?? stats.maxHp,
+      mp: saved?.mp ?? stats.maxMp,
+      erosion: saved?.erosion ?? 0,
+      ailments: (saved?.ailments ?? []).map((state) => ({
+        kind: state.kind,
+        turns: state.turns,
+      })),
+    };
+  }
+
+  return {
+    version: SAVE_VERSION,
+    savedAt: meta.savedAt,
+    playtimeMs: meta.playtimeMs,
+    location,
+    party,
+    owned: [...owned],
+    loadout: getLoadout(),
+    attunement: { ...attunement },
+    inventory: { ...inventory },
+    // 시드가 아니라 **상태**를 저장한다. 시드만 저장하면 불러올 때마다 인카운터 수열이
+    // 처음부터 다시 시작해, 저장·로드 반복으로 조우를 조작할 수 있다 (ADR-002).
+    worldRngState: worldRandom().getState(),
+  };
+}
+
+/**
+ * 세이브를 현재 상태로 되돌린다.
+ *
+ * 호출부가 **먼저 검증해야 한다** (`parseSave`, `validateSaveReferences`). 여기서 다시
+ * 검사하지 않는 이유는 판정이 두 곳에 있으면 반드시 어긋나기 때문이다.
+ */
+export function restoreSave(save: SaveData): void {
+  owned = [...save.owned];
+  loadout = save.loadout;
+  attunement = { ...save.attunement };
+  inventory = { ...save.inventory };
+  worldRng = restoreRng(save.worldRngState);
+
+  const next: Record<ActorId, Vitals> = {};
+  for (const [actorId, saved] of Object.entries(save.party)) {
+    next[actorId] = {
+      hp: saved.hp,
+      mp: saved.mp,
+      erosion: saved.erosion,
+      ailments: saved.ailments.map((state) => ({ kind: state.kind, turns: state.turns })),
+    };
+  }
+  vitals = next;
 }
