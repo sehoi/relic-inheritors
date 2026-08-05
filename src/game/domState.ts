@@ -97,6 +97,16 @@ export function markSaveScreen(state: {
   document.body.dataset['saveSlots'] = state.states.join(',');
 }
 
+/**
+ * 이 맵에 남은 회수 지점 수 (T-039).
+ *
+ * 유물을 주웠는지는 **표식이 사라지는 것**으로만 드러나는데, 그건 화면으로 재기 어렵다.
+ * 스모크가 "밟았더니 하나 줄었다" 를 이걸로 판정한다.
+ */
+export function markSites(remaining: number): void {
+  document.body.dataset['sites'] = String(remaining);
+}
+
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
 export function markDialogue(session: DialogueSession | undefined): void {
   document.body.dataset['dialogue'] =

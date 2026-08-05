@@ -35,7 +35,7 @@ import {
  * `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다 — 조용히 통과시키면
  * 필드가 `undefined` 인 채로 게임이 돌아가다 한참 뒤에 이상해진다.
  */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SavedAilment {
   readonly kind: Ailment;
@@ -76,6 +76,12 @@ export interface SaveData {
    * 다시 시작해, 같은 자리에서 저장·로드를 반복하는 것으로 조우를 조작할 수 있다 (ADR-002).
    */
   readonly worldRngState: number;
+  /**
+   * 이미 주운 회수 지점 (v2, T-039).
+   *
+   * 이게 없으면 불러올 때마다 유물이 다시 놓여 있어, 저장·로드 반복이 유물 무한 획득이 된다.
+   */
+  readonly collectedSites: readonly string[];
 }
 
 // ── 마이그레이션 ──────────────────────────────────────────────────────────
@@ -86,11 +92,20 @@ export type Migration = (data: Record<string, unknown>) => Record<string, unknow
 /**
  * 출발 버전 → 올려주는 함수.
  *
- * 아직 비어 있다 — 스키마가 v1 뿐이기 때문이다. **그래도 기제를 먼저 둔다.**
- * 저장할 것이 늘어난 뒤에 얹으면 첫 마이그레이션부터 급하게 만들게 되고,
- * 그때는 이미 남의 세이브가 존재한다.
+ * **비어 있지 않게 하는 것이 규칙이다** (CLAUDE.md 규칙 7). `SAVE_VERSION` 을 올리면
+ * 여기에 그 단계를 함께 넣는다 — 없으면 `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다.
  */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {};
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  /**
+   * v1 → v2 · 회수 지점 (T-039).
+   *
+   * v1 세이브에는 회수 지점이라는 개념이 없었다. **빈 목록으로 채운다** —
+   * "아무것도 줍지 않았다" 로 보면 옛 세이브의 플레이어가 유물을 다시 주울 수 있게 되는데,
+   * 그건 손해가 아니라 이득이라 안전한 쪽이다. 반대로 "전부 주웠다" 로 보면
+   * 아직 못 가본 층의 유물을 영영 잃는다.
+   */
+  1: (data) => ({ ...data, collectedSites: [] }),
+};
 
 export class SaveError extends Error {
   constructor(message: string) {
@@ -253,6 +268,15 @@ export function parseSave(
     }
   }
 
+  const collectedSites: string[] = [];
+  const collectedRaw = readArray(data['collectedSites'], 'collectedSites', problems);
+  if (collectedRaw !== undefined) {
+    collectedRaw.forEach((entry, position) => {
+      const id = readText(entry, `collectedSites[${position}]`, problems);
+      if (id !== undefined) collectedSites.push(id);
+    });
+  }
+
   const inventory: Record<string, number> = {};
   const inventoryRaw = readRecord(data['inventory'], 'inventory', problems);
   if (inventoryRaw !== undefined) {
@@ -275,6 +299,7 @@ export function parseSave(
     attunement,
     inventory,
     worldRngState: worldRngState as number,
+    collectedSites,
   };
 }
 
@@ -284,6 +309,13 @@ export interface KnownIds {
   readonly relics: readonly string[];
   readonly maps: readonly string[];
   readonly items: readonly string[];
+  /**
+   * 지금 존재하는 회수 지점 id. 생략하면 검사하지 않는다.
+   *
+   * 옛 세이브가 지워진 회수 지점을 기억하고 있어도 **해롭지 않다** — 없는 지점은 그냥
+   * 발동하지 않는다. 그래서 선택 항목이다. 나머지 참조는 없으면 화면이 터지지만 이건 아니다.
+   */
+  readonly sites?: readonly string[];
 }
 
 /**
