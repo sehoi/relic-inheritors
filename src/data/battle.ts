@@ -1,5 +1,5 @@
 import type { DamageTuning } from '../core/battle/damage.js';
-import type { ErosionTuning } from '../core/battle/skill.js';
+import type { AilmentValue, ErosionTuning } from '../core/battle/skill.js';
 import type { AilmentTuning } from '../core/battle/status.js';
 import type { BattleTuning, FleeTuning, TurnOrderTuning } from '../core/battle/index.js';
 
@@ -80,6 +80,23 @@ export const AILMENT: AilmentTuning = {
     silence: 3,
     confusion: 3,
   },
+};
+
+/**
+ * 상태이상 하나가 위력 몇에 해당하는가 (T-028a).
+ *
+ * 침식을 매길 때 쓴다. 순수 위력에만 비례시키면 상태이상 스킬이 침식당 값어치가
+ * 가장 높아져, "싸고 센 것만 계속 쓴다" 가 정답이 된다.
+ *
+ * 침묵이 가장 비싸다 — 상대의 스킬을 통째로 봉인하므로 유물 시스템에 대한 직접적인 반격이다.
+ * 독이 가장 싸다 — 시간이 걸리고 전투가 끝나면 사라진다.
+ */
+export const AILMENT_POWER: AilmentValue = {
+  silence: 80,
+  paralysis: 70,
+  confusion: 60,
+  sleep: 55,
+  poison: 40,
 };
 
 export const BATTLE_TUNING: BattleTuning = {

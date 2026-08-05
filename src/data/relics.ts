@@ -6,11 +6,19 @@ import { skill } from './skills.js';
 /**
  * 유물.
  *
- * ⚠️ **여기를 늘리기 전에 T-027 의 밸런스 불변식이 살아 있어야 한다** (CLAUDE.md 규칙 9).
- * 유물 하나가 8슬롯에 대한 조합 공간을 곱으로 늘리므로, 검증 없이 늘리면
- * 무엇을 망가뜨렸는지 알 수 없게 된다.
+ * ⚠️ **여기를 늘리면 `tests/balance/relicBuilds.test.ts` 의 `측정의 한계` 가 빨개진다.**
+ * 일부러 그렇게 만들어 뒀다 (ADR-013) — 유물이 늘면 조합 공간이 곱으로 커지므로,
+ * 낡은 측정 지점으로 새 데이터를 판정하지 않도록 `npm run sim` 으로 다시 재고
+ * `MEASURED_RELICS` 를 갱신해야 한다.
  *
- * 지금 셋은 **구조를 굴려보기 위한 표본**이다. 수직 슬라이스 분량(12종)은 T-028 에서 채운다.
+ * ## 설계 축 (GDD §5.4)
+ *
+ * - **등급이 높을수록 강하고 침식이 빠르다.** 등급 구간별로 `erosionFactor` 를 띠처럼 나눈다 —
+ *   1등급 0.8~1.0, 2등급 1.1~1.25, 3등급 1.4~. 이 띠가 겹치면 "센데 안 타는" 유물이 생기고
+ *   그건 곧 지배 전략이 된다.
+ * - **태그마다 최소 두 유물.** 태그가 하나뿐이면 `count: 2` 짜리 공명이 영원히 성립하지 않는다.
+ * - **속성은 겹쳐도 된다.** 겹치는 쪽이 오히려 "같은 속성인데 왜 다른가" 를 스탯과 액티브로
+ *   말하게 만든다.
  */
 export const RELICS: Readonly<Record<string, Relic>> = {
   'ember-coil': {
@@ -52,6 +60,62 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     ],
     erosionFactor: 1.4,
     lore: '세 번째 계승자는 이것을 들고 돌아왔고, 그 뒤로 말을 하지 못했다.',
+  },
+
+  // ── T-028a ────────────────────────────────────────────────────────────────
+
+  'tide-pearl': {
+    id: 'tide-pearl',
+    name: '밀물 진주',
+    tier: 1,
+    element: 'water',
+    tags: ['tide'],
+    statMods: { mag: 3, res: 4 },
+    actives: [{ skill: skill('tide-lash'), unlockRank: 0 }],
+    erosionFactor: 0.9,
+    lore: '물이 빠진 자리에 남아 있었다. 아직도 젖어 있다.',
+  },
+
+  'bulwark-ring': {
+    id: 'bulwark-ring',
+    name: '방벽 고리',
+    tier: 2,
+    element: 'earth',
+    tags: ['stone', 'ward'],
+    // 지키는 대신 느리다. 민첩을 깎는 것이 이 유물의 진짜 대가다.
+    statMods: { def: 7, maxHp: 18, agi: -3 },
+    actives: [{ skill: skill('ward-strike'), unlockRank: 0 }],
+    // 등급 띠는 지키되, 액티브의 침식이 낮아 실제로는 천천히 탄다.
+    erosionFactor: 1.1,
+    lore: '문을 지키던 자들이 나눠 끼던 것이다. 문은 결국 열렸다.',
+  },
+
+  'gale-fang': {
+    id: 'gale-fang',
+    name: '질풍 송곳니',
+    tier: 2,
+    element: 'thunder',
+    tags: ['storm', 'tide'],
+    statMods: { atk: 6, agi: 5, res: -2 },
+    actives: [{ skill: skill('storm-needle'), unlockRank: 0 }],
+    erosionFactor: 1.15,
+    lore: '폭풍이 지나간 자리에서 주웠다고 한다. 주운 사람은 없다.',
+  },
+
+  'ash-lantern': {
+    id: 'ash-lantern',
+    name: '잿빛 등',
+    tier: 2,
+    element: 'fire',
+    tags: ['ember', 'hollow'],
+    statMods: { mag: 7, maxMp: 5, def: -2 },
+    actives: [
+      { skill: skill('ember-burst'), unlockRank: 0 },
+      // 공허 쪽 액티브는 잠겨 있다. 이 유물을 계속 쓸 이유가 여기서 나온다 (GDD §5.3).
+      { skill: skill('hollow-bite'), unlockRank: 2 },
+    ],
+    erosionFactor: 1.2,
+    lore: '불을 담는 그릇인데, 안쪽이 비어 있는 쪽이 더 밝다.',
   },
 };
 

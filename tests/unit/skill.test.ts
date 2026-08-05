@@ -3,6 +3,7 @@ import type { BattleActor } from '../../src/core/battle/index.js';
 import {
   applySkillCost,
   canUseSkill,
+  effectivePower,
   erosionCap,
   erosionThreshold,
   isOverloaded,
@@ -11,6 +12,7 @@ import {
   type ErosionTuning,
   type Skill,
 } from '../../src/core/battle/skill.js';
+import { AILMENT_POWER } from '../../src/data/battle.js';
 import { SKILLS, skill, skillRegistry } from '../../src/data/skills.js';
 
 /** 최대 MP 20 인 표본 기준 임계 100. perMaxMp 0 으로 두면 고정 임계처럼 읽힌다. */
@@ -152,13 +154,26 @@ describe('스킬 데이터', () => {
     expect(skillRegistry.ids().sort()).toEqual(Object.keys(SKILLS).sort());
   });
 
-  it('위력이 높을수록 침식도 크다 (비례가 무너지면 조합 설계가 무의미해진다)', () => {
-    const ordered = Object.values(SKILLS).sort((a, b) => a.attack.power - b.attack.power);
+  it('실효 위력이 높을수록 침식도 크다 (비례가 무너지면 조합 설계가 무의미해진다)', () => {
+    // **순수 위력이 아니라 실효 위력**으로 잰다. 상태이상은 위력에 잡히지 않는 값어치가 있어서,
+    // 위력만 보고 침식을 매기면 상태이상 스킬이 침식당 값어치가 가장 높아진다 —
+    // 그러면 "싸고 센 것만 계속 쓴다" 가 정답이 된다.
+    const power = (s: Skill): number => effectivePower(s, AILMENT_POWER);
+    const ordered = Object.values(SKILLS).sort((a, b) => power(a) - power(b));
+
     for (let i = 1; i < ordered.length; i += 1) {
       const weaker = ordered[i - 1] as Skill;
       const stronger = ordered[i] as Skill;
-      expect(stronger.erosion, `${stronger.id} vs ${weaker.id}`).toBeGreaterThan(weaker.erosion);
+      expect(
+        stronger.erosion,
+        `${stronger.id}(실효 ${power(stronger)}) vs ${weaker.id}(실효 ${power(weaker)})`,
+      ).toBeGreaterThan(weaker.erosion);
     }
+  });
+
+  it('상태이상이 실효 위력에 반영된다', () => {
+    expect(effectivePower(skill('ember-lash'), AILMENT_POWER)).toBe(130); // 상태이상 없음
+    expect(effectivePower(skill('hollow-bite'), AILMENT_POWER)).toBe(105 + 80 * 0.35);
   });
 
   it('모든 스킬이 양수 비용을 갖는다', () => {

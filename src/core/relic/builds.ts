@@ -55,6 +55,35 @@ export function enumerateBuilds(
   return builds;
 }
 
+/** 크기가 정확히 `size` 인 조합만. */
+export function exactBuilds(
+  relicIds: readonly RelicId[],
+  size: number,
+): readonly RelicBuild[] {
+  if (size < 1) throw new RangeError(`size 는 1 이상이어야 합니다 (받은 값: ${size}).`);
+  return enumerateBuilds(relicIds, size).filter((build) => build.relics.length === size);
+}
+
+/**
+ * 무엇을 재야 하는가 — **선택이 성립하는 조합 크기.**
+ *
+ * 두 가지를 함께 만족해야 한다.
+ *
+ * 1. **슬롯을 채운다.** 슬롯이 남는 조합은 플레이어가 고르지 않는다. 그걸 섞어 재면
+ *    "많이 낄수록 이긴다" 가 격차로 잡히는데, 그건 지배 전략이 아니다 (ADR-013).
+ * 2. **적어도 하나는 빼고 낀다.** 가진 것을 전부 낄 수 있으면 고를 것이 없다 —
+ *    조합이 하나뿐이라 순위도 채택률도 존재하지 않는다.
+ *
+ * 그래서 `min(슬롯, 가진 수 - 1)` 이다.
+ */
+export function choiceBuildSize(ownedCount: number, slots: number): number {
+  if (ownedCount < 2) {
+    throw new RangeError(`유물이 ${ownedCount}개면 고를 것이 없습니다. 2개 이상이어야 합니다.`);
+  }
+  if (slots < 1) throw new RangeError(`슬롯은 1 이상이어야 합니다 (받은 값: ${slots}).`);
+  return Math.min(slots, ownedCount - 1);
+}
+
 /**
  * 조합이 너무 많을 때 **고르게 솎아낸다.**
  *

@@ -3,8 +3,9 @@ import { seedRange } from '../../src/core/battle/simulate.js';
 import { sweep } from '../../src/core/battle/sweep.js';
 import {
   adoptionRates,
+  choiceBuildSize,
   enumerateBuilds,
-  groupBySize,
+  exactBuilds,
   rankSpread,
   shareInBand,
   thinBuilds,
@@ -13,7 +14,7 @@ import {
 } from '../../src/core/relic/builds.js';
 import { SLOTS_PER_MEMBER, type Relic } from '../../src/core/relic/index.js';
 import { BATTLE_TUNING } from '../../src/data/battle.js';
-import { BUILD_SWEEP, RELIC_INVARIANTS } from '../../src/data/invariants.js';
+import { BUILD_SWEEP, MEASURED_RELICS, RELIC_INVARIANTS } from '../../src/data/invariants.js';
 import { RELICS, relic } from '../../src/data/relics.js';
 import { relicFight } from '../../src/data/scenarios.js';
 
@@ -23,16 +24,17 @@ import { relicFight } from '../../src/data/scenarios.js';
  * T-019 에서 `it.todo` 로 남겨둔 셋이다. 유물이 없으면 "조합별 승률" 자체가 존재하지 않아
  * 측정할 수 없었다.
  *
+ * **무엇을 재는가**: 슬롯을 채우되 가진 것을 다 끼지는 못하는 조합 —
+ * 즉 **플레이어가 실제로 고르는 조합**뿐이다 (`choiceBuildSize`, ADR-013).
+ *
  * **이 파일은 두 가지를 다르게 다룬다.**
  *
  * 1. **기구 검사** — 지배 전략과 사장된 유물을 일부러 심고, 불변식이 그걸 **잡아내는지** 본다.
  *    이게 없으면 초록이 "문제가 없다" 는 뜻인지 "아무것도 재지 않았다" 는 뜻인지 알 수 없다.
  * 2. **실제 데이터 검사** — `data/relics.ts` 를 훑는다.
- *
- * ⚠️ **지금 유물은 3종, 슬롯은 4개다.** 슬롯이 남아 조합에 기회비용이 없으므로 분해능이 낮다.
- * 유물이 슬롯보다 많아지는 T-028 에서 다시 재야 하고, 아래 마지막 테스트가 그걸 강제한다.
  */
 
+const SLOTS = SLOTS_PER_MEMBER * 2;
 const seeds = seedRange(1, BUILD_SWEEP.trials);
 
 interface Scored {
@@ -43,7 +45,7 @@ interface Scored {
 function scoreBuilds(catalog: Readonly<Record<string, Relic>>): readonly Scored[] {
   const ids = Object.keys(catalog);
   const builds = thinBuilds(
-    enumerateBuilds(ids, Math.min(ids.length, SLOTS_PER_MEMBER * 2)),
+    exactBuilds(ids, choiceBuildSize(ids.length, SLOTS)),
     BUILD_SWEEP.maxBuilds,
   );
 
@@ -58,13 +60,6 @@ function scoreBuilds(catalog: Readonly<Record<string, Relic>>): readonly Scored[
     seeds,
     BATTLE_TUNING,
   ).map((entry) => ({ build: entry.item, winRate: entry.summary.winRate }));
-}
-
-/** 잴 수 있는 크기 묶음만. 조합이 하나뿐인 묶음은 통과해도 실패해도 뜻이 없다. */
-function measurableClasses(scored: readonly Scored[]): readonly (readonly Scored[])[] {
-  return [...groupBySize(scored).values()].filter(
-    (group) => group.length >= RELIC_INVARIANTS.minClassSize,
-  );
 }
 
 const describeRates = (rows: readonly Scored[]): string =>
@@ -85,15 +80,10 @@ describe('기구 검사 · 불변식에 이빨이 있는가', () => {
       king: { ...base, id: 'king', statMods: { mag: 40, atk: 40, def: 20, maxHp: 60 } },
     });
 
-    const worst = Math.max(
-      ...measurableClasses(scored).map((group) =>
-        rankSpread(group.map((row) => row.winRate), RELIC_INVARIANTS.dominanceRank),
-      ),
-    );
-
-    expect(worst, `기구가 지배 전략을 놓쳤습니다:\n  ${describeRates(scored)}`).toBeGreaterThan(
-      RELIC_INVARIANTS.maxRankSpread,
-    );
+    expect(
+      rankSpread(scored.map((row) => row.winRate), RELIC_INVARIANTS.dominanceRank),
+      `기구가 지배 전략을 놓쳤습니다:\n  ${describeRates(scored)}`,
+    ).toBeGreaterThan(RELIC_INVARIANTS.maxRankSpread);
   });
 
   it('사장된 유물을 심으면 불변식 4 가 잡아낸다', () => {
@@ -113,21 +103,42 @@ describe('기구 검사 · 불변식에 이빨이 있는가', () => {
     ).toBeLessThan(RELIC_INVARIANTS.minAdoption);
   });
 
-  it('조합 크기를 섞으면 격차가 부풀려진다 (그래서 크기별로 잰다)', () => {
-    // ADR-013 의 근거. 이 테스트가 초록이면 "크기별 비교" 가 실제로 다른 답을 낸다는 뜻이고,
-    // 빨개지면 그 구분이 더 이상 필요 없다는 뜻이다 — 어느 쪽이든 알아야 한다.
-    const scored = scoreBuilds(RELICS);
-    const mixed = rankSpread(scored.map((r) => r.winRate), RELIC_INVARIANTS.dominanceRank);
-    const worstClass = Math.max(
-      ...measurableClasses(scored).map((group) =>
-        rankSpread(group.map((row) => row.winRate), RELIC_INVARIANTS.dominanceRank),
-      ),
-    );
+  it('슬롯이 남는 조합을 섞으면 측정이 흐려진다 (그래서 슬롯을 채우는 조합만 잰다)', () => {
+    // ADR-013 의 근거.
+    //
+    // 유물 3종 시절에는 이 왜곡이 **격차**로 나타났다 — 1위가 3개 조합, 5위가 1개 조합이라
+    // 26.7%p 가 나왔고 그건 지배 전략이 아니라 슬롯이 남는다는 뜻이었다.
+    // 유물 7종 · 적 Lv42 에서는 격차로는 더 이상 드러나지 않는다. 작은 조합이 전부 0% 라
+    // 상위 5위가 어차피 전부 슬롯을 채운 조합이기 때문이다.
+    //
+    // 대신 **다양성**이 무너진다. 아무도 고르지 않을 조합이 절반 넘게 섞여 들어와
+    // 밴드 비율을 끌어내린다. 왜곡의 모양은 바뀌었지만 왜곡은 그대로다.
+    const ids = Object.keys(RELICS);
+    const size = choiceBuildSize(ids.length, SLOTS);
+
+    const band = (builds: readonly RelicBuild[]): number =>
+      shareInBand(
+        sweep(
+          thinBuilds(builds, BUILD_SWEEP.maxBuilds),
+          (build) =>
+            relicFight(BUILD_SWEEP.partyLevel, build.relics.map(relic), {
+              opponent: BUILD_SWEEP.opponent,
+              enemyLevel: BUILD_SWEEP.enemyLevel,
+            }),
+          seedRange(1, 60),
+          BATTLE_TUNING,
+        ).map((entry) => entry.summary.winRate),
+        RELIC_INVARIANTS.healthyBand.low,
+        RELIC_INVARIANTS.healthyBand.high,
+      );
+
+    const mixed = band(enumerateBuilds(ids, size));
+    const filled = band(exactBuilds(ids, size));
 
     expect(
       mixed,
-      `섞어서 ${(mixed * 100).toFixed(1)}%p / 크기별 최악 ${(worstClass * 100).toFixed(1)}%p`,
-    ).toBeGreaterThan(worstClass);
+      `섞어서 밴드 ${(mixed * 100).toFixed(0)}% / 슬롯을 채워서 ${(filled * 100).toFixed(0)}%`,
+    ).toBeLessThan(filled);
   });
 });
 
@@ -135,51 +146,40 @@ describe('기구 검사 · 불변식에 이빨이 있는가', () => {
 
 describe('유물 조합 (data/relics.ts)', () => {
   const scored = scoreBuilds(RELICS);
-  const classes = measurableClasses(scored);
 
-  it('잴 수 있는 크기 묶음이 하나는 있다', () => {
-    // 없으면 아래 두 테스트가 조용히 아무것도 재지 않고 통과한다.
-    expect(classes.length, `조합: ${describeRates(scored)}`).toBeGreaterThan(0);
+  it('잴 만큼의 조합이 있다', () => {
+    // 조합이 순위 개수보다 적으면 아래 테스트들이 조용히 약해진다.
+    expect(scored.length, `조합:\n  ${describeRates(scored)}`).toBeGreaterThanOrEqual(
+      RELIC_INVARIANTS.dominanceRank,
+    );
   });
 
-  it('불변식 1 · 같은 크기 안에서 승률 1위와 5위의 차이가 25%p 이내다', () => {
-    const failures = classes
-      .map((group) => ({
-        size: group[0]?.build.relics.length ?? 0,
-        spread: rankSpread(group.map((row) => row.winRate), RELIC_INVARIANTS.dominanceRank),
-        group,
-      }))
-      .filter((entry) => entry.spread > RELIC_INVARIANTS.maxRankSpread)
-      .map(
-        (entry) =>
-          `크기 ${entry.size}: ${(entry.spread * 100).toFixed(1)}%p\n  ${describeRates(entry.group)}`,
-      );
+  it('불변식 1 · 승률 1위와 5위의 차이가 25%p 이내다', () => {
+    const spread = rankSpread(
+      scored.map((row) => row.winRate),
+      RELIC_INVARIANTS.dominanceRank,
+    );
 
-    expect(failures, `지배 전략이 있습니다:\n${failures.join('\n')}`).toEqual([]);
+    expect(
+      spread,
+      `1-${RELIC_INVARIANTS.dominanceRank}위 격차 ${(spread * 100).toFixed(1)}%p — 지배 전략이 있습니다:\n  ${describeRates(scored)}`,
+    ).toBeLessThanOrEqual(RELIC_INVARIANTS.maxRankSpread);
   });
 
   it('불변식 2 · 승률 55~85% 구간에 드는 조합이 40% 이상이다', () => {
-    const failures = classes
-      .map((group) => ({
-        size: group[0]?.build.relics.length ?? 0,
-        share: shareInBand(
-          group.map((row) => row.winRate),
-          RELIC_INVARIANTS.healthyBand.low,
-          RELIC_INVARIANTS.healthyBand.high,
-        ),
-        group,
-      }))
-      .filter((entry) => entry.share < RELIC_INVARIANTS.minBandShare)
-      .map(
-        (entry) =>
-          `크기 ${entry.size}: ${(entry.share * 100).toFixed(0)}%\n  ${describeRates(entry.group)}`,
-      );
+    const share = shareInBand(
+      scored.map((row) => row.winRate),
+      RELIC_INVARIANTS.healthyBand.low,
+      RELIC_INVARIANTS.healthyBand.high,
+    );
 
-    expect(failures, `조합 다양성이 부족합니다:\n${failures.join('\n')}`).toEqual([]);
+    expect(
+      share,
+      `밴드 ${(share * 100).toFixed(0)}% — 조합 다양성이 부족합니다:\n  ${describeRates(scored)}`,
+    ).toBeGreaterThanOrEqual(RELIC_INVARIANTS.minBandShare);
   });
 
   it('불변식 4 · 좋은 조합에 한 번도 끼지 못하는 유물이 없다', () => {
-    // 여기만 크기를 섞어서 잰다 — 혼자서는 약해도 조합에서 빛나는 유물이 있다.
     const good = topBuilds(scored, RELIC_INVARIANTS.goodBuildRatio);
     const adoption = adoptionRates(good, Object.keys(RELICS));
 
@@ -199,21 +199,20 @@ describe('유물 조합 (data/relics.ts)', () => {
 });
 
 describe('측정의 한계', () => {
-  it('유물이 슬롯 수를 넘으면 측정 지점을 다시 잡아야 한다', () => {
-    // 지금은 유물 3종 < 슬롯 4개라 **조합에 기회비용이 없다** — 더 끼면 무조건 이득이다.
-    // 유물이 슬롯보다 많아지는 순간 상황이 달라지고, 그때는 BUILD_SWEEP 의 난이도가
-    // 여전히 승률을 가르는지 다시 재야 한다.
+  it('유물 수가 달라지면 측정 지점을 다시 잡아야 한다', () => {
+    // 유물이 늘면 승률 분포가 통째로 이동한다. 실제로 3종 → 7종에서 측정 지점을
+    // Lv36 → Lv42 로 옮겨야 했다 — 옛 지점에서는 슬롯을 채운 조합이 전부 이겨
+    // 아무것도 갈리지 않았다.
     //
-    // 이 테스트는 T-028 에서 일부러 빨개진다. 그게 목적이다 — 조용히 지나가면
-    // 낡은 측정 지점으로 새 데이터를 판정하게 된다.
-    const relicCount = Object.keys(RELICS).length;
-    const slots = SLOTS_PER_MEMBER * 2;
+    // 이 테스트는 유물을 늘리면 일부러 빨개진다. 그게 목적이다.
+    const count = Object.keys(RELICS).length;
 
     expect(
-      relicCount,
-      `유물이 ${relicCount}종으로 늘었습니다 (슬롯 ${slots}개).\n` +
+      count,
+      `유물이 ${count}종입니다 (측정 당시 ${MEASURED_RELICS}종).\n` +
         `docs/DECISIONS.md ADR-013 을 읽고, npm run sim 으로 BUILD_SWEEP 난이도가 ` +
-        `여전히 승률을 가르는지 확인한 뒤 이 테스트를 갱신하세요.`,
-    ).toBeLessThanOrEqual(slots);
+        `여전히 승률을 가르는지 확인한 뒤 MEASURED_RELICS 를 갱신하세요.\n` +
+        `가르는 지점은 한 레벨이 아니라 구간이어야 합니다 — 한 점만 통과하면 우연입니다.`,
+    ).toBe(MEASURED_RELICS);
   });
 });

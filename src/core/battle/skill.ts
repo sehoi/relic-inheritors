@@ -27,6 +27,23 @@ export interface Skill {
   };
 }
 
+/** 상태이상 하나가 위력 몇에 해당하는가. 침식을 매길 때 쓴다. */
+export type AilmentValue = Readonly<Record<Ailment, number>>;
+
+/**
+ * 실효 위력 — **위력에 상태이상의 값어치를 더한 것.**
+ *
+ * 침식을 순수 위력에만 비례시키면 상태이상 스킬이 침식당 값어치가 가장 높아진다.
+ * 침묵은 상대의 스킬을 통째로 봉인하는데 위력은 낮게 잡히기 때문이다 — 그러면
+ * "가장 싸고 센 것만 계속 쓴다" 가 정답이 되어 조합 설계가 무의미해진다 (GDD §5.4).
+ *
+ * 확률을 곱하는 이유는 35% 로 거는 침묵과 100% 로 거는 침묵이 같은 값어치일 수 없어서다.
+ */
+export function effectivePower(skill: Skill, values: AilmentValue): number {
+  if (skill.inflict === undefined) return skill.attack.power;
+  return skill.attack.power + values[skill.inflict.kind] * skill.inflict.chance;
+}
+
 export interface ErosionTuning {
   /** 임계의 고정분. 저레벨에서 임계가 지나치게 낮아지는 것을 막는다. */
   readonly base: number;
