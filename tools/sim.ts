@@ -11,7 +11,14 @@
 
 import { seedRange, simulateMany, type SimSummary } from '../src/core/battle/simulate.js';
 import { BATTLE_TUNING } from '../src/data/battle.js';
-import { BUILD_SKEWS, SAMPLE_LEVELS, bossFight, mobFight } from '../src/data/scenarios.js';
+import { RELICS, relic } from '../src/data/relics.js';
+import {
+  BUILD_SKEWS,
+  SAMPLE_LEVELS,
+  bossFight,
+  mobFight,
+  relicFight,
+} from '../src/data/scenarios.js';
 
 const TRIALS = 300;
 const seeds = seedRange(1, TRIALS);
@@ -64,6 +71,19 @@ console.log('-'.repeat(header.length));
 
 for (const [name, skew] of Object.entries(BUILD_SKEWS)) {
   console.log(row(name, simulateMany(bossFight(20, skew), seeds, BATTLE_TUNING)));
+}
+
+console.log('\n\n유물별 — 보스 Lv20 (침식 계수가 폭주 횟수로 드러난다)\n');
+console.log(header);
+console.log('-'.repeat(header.length));
+
+for (const entry of Object.values(RELICS)) {
+  console.log(
+    row(
+      `${entry.name} ×${entry.erosionFactor}`,
+      simulateMany(relicFight(20, [relic(entry.id)], { opponent: 'boss' }), seeds, BATTLE_TUNING),
+    ),
+  );
 }
 
 console.log('\n판정은 `npm run test` 의 tests/balance 가 한다. 여기 숫자는 참고용이다.');

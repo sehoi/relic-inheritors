@@ -155,6 +155,62 @@ describe('activesOf', () => {
   });
 });
 
+describe('침식 계수 (T-026)', () => {
+  const erosionOf = (skills: readonly { id: string; erosion: number }[], id: string): number => {
+    const found = skills.find((s) => s.id === id);
+    if (found === undefined) throw new Error(`${id} 가 없습니다`);
+    return found.erosion;
+  };
+
+  it('계수 1 이면 스킬 원래 값 그대로다', () => {
+    // ember-coil 은 계수 1. 기준점이 되는 유물이다.
+    expect(erosionOf(activesOf([relic('ember-coil')]), 'ember-lash')).toBe(skill('ember-lash').erosion);
+  });
+
+  it('같은 스킬이라도 계수가 큰 유물로 쓰면 더 쌓인다', () => {
+    // 이게 "강한 유물일수록 빨리 폭주한다" 의 실체다 (GDD §5.4).
+    const mild = erosionOf(activesOf([relic('ember-coil')]), 'ember-lash'); // ×1.0
+    const harsh = erosionOf(activesOf([relic('sundering-core')]), 'ember-lash'); // ×1.4
+
+    expect(harsh).toBeGreaterThan(mild);
+    expect(harsh).toBe(Math.round(mild * 1.4));
+  });
+
+  it('계수가 1 미만이면 덜 쌓인다', () => {
+    const base = skill('stone-fist').erosion;
+    expect(erosionOf(activesOf([relic('stone-seal')]), 'stone-fist')).toBeLessThan(base); // ×0.8
+  });
+
+  it('두 유물이 같은 스킬을 주면 덜 침식되는 쪽을 쓴다', () => {
+    // 둘 다 끼고 있는데 굳이 위험한 쪽으로 흘려보낼 이유가 없다.
+    const both = activesOf([relic('sundering-core'), relic('ember-coil')]);
+    expect(erosionOf(both, 'ember-lash')).toBe(skill('ember-lash').erosion);
+  });
+
+  it('완화 배수가 침식을 낮춘다', () => {
+    const full = erosionOf(activesOf([relic('ember-coil')]), 'ember-lash');
+    const relieved = erosionOf(activesOf([relic('ember-coil')], {}, 0.5), 'ember-lash');
+    expect(relieved).toBeLessThan(full);
+  });
+
+  it('완화를 극단으로 걸어도 0 이 되지 않는다', () => {
+    // 침식을 0으로 만들 수 있으면 침식이 리스크 축이 아니게 된다.
+    expect(erosionOf(activesOf([relic('ember-coil')], {}, 0.0001), 'ember-lash')).toBe(1);
+  });
+
+  it('원본 스킬 데이터를 바꾸지 않는다', () => {
+    const before = skill('ember-lash').erosion;
+    activesOf([relic('sundering-core')]);
+    expect(skill('ember-lash').erosion).toBe(before);
+  });
+
+  it('침식 외의 값은 그대로다', () => {
+    const [lash] = activesOf([relic('sundering-core')]);
+    expect(lash?.mpCost).toBe(skill('ember-lash').mpCost);
+    expect(lash?.attack).toEqual(skill('ember-lash').attack);
+  });
+});
+
 describe('validateRelic', () => {
   const valid = relic('ember-coil');
 

@@ -23,14 +23,18 @@ export interface Resonance {
   readonly name: string;
   /** **모든** 조건을 만족해야 발동한다. */
   readonly conditions: readonly ResonanceCondition[];
-  /**
-   * 파티 전원에게 더해지는 스탯.
-   *
-   * 효과 종류를 스탯 보정 하나로 시작한다 — 침식 완화·속성 증폭 같은 것은
-   * 그걸 소비할 기제가 붙는 T-026 에서 함께 넓힌다. 쓰이지 않는 효과 종류를
-   * 미리 만들어 두면 죽은 구조가 된다.
-   */
+  /** 파티 전원에게 더해지는 스탯. */
   readonly statMods: Readonly<Partial<Stats>>;
+  /**
+   * 파티 전원의 스킬 침식량에 곱해지는 배수 (T-026). 생략하면 1(완화 없음).
+   *
+   * 유물 계수가 침식을 **올리는** 축이라면 이쪽은 **내리는** 축이다. 둘이 같이 있어야
+   * "센 유물을 끼되 완화 조합으로 감당한다" 는 빌드가 성립한다 — 그게 없으면
+   * 침식은 그냥 강한 유물에 붙은 벌점일 뿐이다.
+   *
+   * 속성 증폭은 아직 넣지 않는다. 데미지 파이프라인에 소비 기제가 없어 죽은 구조가 된다.
+   */
+  readonly erosionRelief?: number;
   readonly description: string;
 }
 
@@ -75,6 +79,16 @@ export function resonanceStatMods(
   return total;
 }
 
+/**
+ * 발동한 공명들의 침식 완화 배수. 여럿이면 곱한다.
+ *
+ * 더하지 않고 곱하는 이유는 완화가 **0 이하로 내려가지 않게** 하기 위해서다.
+ * 덧셈이면 완화 공명 몇 개로 침식을 음수까지 밀어낼 수 있다.
+ */
+export function resonanceErosionRelief(resonances: readonly Resonance[]): number {
+  return resonances.reduce((product, resonance) => product * (resonance.erosionRelief ?? 1), 1);
+}
+
 export function validateResonance(resonance: Resonance): void {
   const problems = Problems.create();
   const at = problems.scope(`"${resonance.id}"`);
@@ -96,8 +110,16 @@ export function validateResonance(resonance: Resonance): void {
     }
   }
 
-  if (Object.keys(resonance.statMods).length === 0) {
-    at.add('statMods 가 비어 있습니다. 아무 효과도 없는 공명은 성립해도 의미가 없습니다.');
+  if (resonance.erosionRelief !== undefined) {
+    // 1을 넘으면 완화가 아니라 가중이다. 그런 공명이 필요해지면 별도 항목으로 나눈다 —
+    // 한 필드가 양방향이면 "완화 배수" 라는 이름이 거짓말이 된다.
+    if (!(resonance.erosionRelief > 0) || resonance.erosionRelief > 1) {
+      at.add(`erosionRelief 는 0 초과 1 이하여야 합니다 (받은 값: ${resonance.erosionRelief}).`);
+    }
+  }
+
+  if (Object.keys(resonance.statMods).length === 0 && resonance.erosionRelief === undefined) {
+    at.add('아무 효과도 없습니다. statMods 나 erosionRelief 중 하나는 있어야 합니다.');
   }
 
   problems.throwIfAny('공명');

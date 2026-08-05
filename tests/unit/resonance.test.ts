@@ -5,6 +5,7 @@ import {
   countTags,
   isResonanceActive,
   missingForResonance,
+  resonanceErosionRelief,
   resonanceStatMods,
   validateResonance,
   type Resonance,
@@ -112,6 +113,28 @@ describe('missingForResonance', () => {
   });
 });
 
+describe('resonanceErosionRelief (T-026)', () => {
+  const relief = (value: number): Resonance => ({
+    ...resonance('banked-fire'),
+    erosionRelief: value,
+  });
+
+  it('완화가 없으면 1 이다', () => {
+    expect(resonanceErosionRelief([])).toBe(1);
+    expect(resonanceErosionRelief([resonance('twin-ember')])).toBe(1);
+  });
+
+  it('여럿이면 곱한다', () => {
+    // 더하면 완화 몇 개로 침식을 음수까지 밀어낼 수 있다.
+    expect(resonanceErosionRelief([relief(0.5), relief(0.5)])).toBe(0.25);
+  });
+
+  it('아무리 쌓아도 양수로 남는다', () => {
+    const many = Array.from({ length: 20 }, () => relief(0.5));
+    expect(resonanceErosionRelief(many)).toBeGreaterThan(0);
+  });
+});
+
 describe('validateResonance', () => {
   const valid = resonance('banked-fire');
 
@@ -123,8 +146,21 @@ describe('validateResonance', () => {
     expect(() => validateResonance({ ...valid, conditions: [] })).toThrow(/조건 없는/);
   });
 
-  it('효과 없는 공명을 거부한다', () => {
-    expect(() => validateResonance({ ...valid, statMods: {} })).toThrow(/statMods/);
+  it('효과가 하나도 없는 공명을 거부한다', () => {
+    const { erosionRelief: _drop, ...noRelief } = valid;
+    expect(() => validateResonance({ ...noRelief, statMods: {} })).toThrow(/아무 효과도/);
+  });
+
+  it('침식 완화만 있어도 통과한다 (스탯 보정이 유일한 효과 종류가 아니다)', () => {
+    expect(() =>
+      validateResonance({ ...valid, statMods: {}, erosionRelief: 0.9 }),
+    ).not.toThrow();
+  });
+
+  it('침식 완화 범위를 검사한다', () => {
+    // 1을 넘으면 완화가 아니라 가중이다 — 이름이 거짓말이 된다.
+    expect(() => validateResonance({ ...valid, erosionRelief: 1.2 })).toThrow(/erosionRelief/);
+    expect(() => validateResonance({ ...valid, erosionRelief: 0 })).toThrow(/erosionRelief/);
   });
 
   it('같은 태그를 두 번 요구할 수 없다', () => {
