@@ -11,7 +11,7 @@ import type { Walker } from '../core/world/movement.js';
  * 이건 디버그 편의 기능이 아니라 **자율 검증의 인터페이스다.**
  * 씬이나 상태를 추가하면 여기도 함께 갱신한다.
  */
-export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle'] as const;
+export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle', 'relic'] as const;
 
 export type SceneKey = (typeof SCENE_KEYS)[number];
 
@@ -58,6 +58,26 @@ export function markBattle(phase: BattlePhase, outcome?: string): void {
   document.body.dataset['battlePhase'] = phase;
   if (outcome === undefined) delete document.body.dataset['battleOutcome'];
   else document.body.dataset['battleOutcome'] = outcome;
+}
+
+/**
+ * 유물 장착 화면 (T-029).
+ *
+ * **발동 중인 공명을 노출하는 것이 핵심이다.** 장착을 바꿨을 때 공명이 실제로 붙고 떨어지는지는
+ * 화면을 봐서는 "글자가 바뀌었다" 까지만 알 수 있다. 스모크가 조합 설계를 검증하려면
+ * 판정 결과 자체가 질의 가능해야 한다 (GDD §6.4).
+ */
+export function markRelicScreen(state: {
+  readonly focus: string;
+  readonly slot: string;
+  readonly relic: string;
+  readonly resonances: readonly string[];
+}): void {
+  document.body.dataset['relicFocus'] = state.focus;
+  document.body.dataset['relicSlot'] = state.slot;
+  document.body.dataset['relicCursor'] = state.relic;
+  document.body.dataset['resonances'] =
+    state.resonances.length === 0 ? 'none' : [...state.resonances].sort().join(',');
 }
 
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */

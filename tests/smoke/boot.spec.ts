@@ -261,6 +261,83 @@ test('탐색 중 인카운터가 발생하고 전투 후 제자리로 돌아온�
 });
 
 /**
+ * 유물 장착 화면 (T-029).
+ *
+ * **조합 설계가 이 게임의 중심이므로, 조합을 바꾸면 공명이 실제로 붙고 떨어져야 한다** (GDD §6.4).
+ * 화면만 봐서는 "글자가 바뀌었다" 까지만 알 수 있어서, 판정 결과를 DOM 으로 질의한다.
+ */
+test('유물을 갈아끼우면 공명이 실제로 바뀐다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?scene=relic');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'relic', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+
+  // 기본 장착은 지닌 유물을 한 명씩 돌아가며 나눠 준 상태다.
+  const before = (await page.locator('body').getAttribute('data-resonances')) ?? '';
+  expect(before, '시작부터 공명이 하나는 발동해 있어야 조합이라는 개념을 만난다').not.toBe('none');
+
+  await mkdir(SHOT_DIR, { recursive: true });
+  await page.screenshot({ path: `${SHOT_DIR}/relic.png` });
+
+  // 슬롯 칸에서 시작한다. 첫 슬롯을 비우면 공명 구성이 달라져야 한다.
+  await expect(page.locator('body')).toHaveAttribute('data-relic-focus', 'slots');
+  await stepKey(page, 'Enter');
+
+  const emptied = (await page.locator('body').getAttribute('data-resonances')) ?? '';
+  expect(emptied, `유물을 뺐는데 공명이 그대로다 (${before})`).not.toBe(before);
+
+  // 오른쪽 칸으로 옮긴다. 커서는 방금 뺀 유물(목록 첫 줄)에 있다.
+  await stepKey(page, 'ArrowRight');
+  await expect(page.locator('body')).toHaveAttribute('data-relic-focus', 'relics');
+
+  const first = await page.locator('body').getAttribute('data-relic-cursor');
+  await stepKey(page, 'ArrowDown');
+  expect(
+    await page.locator('body').getAttribute('data-relic-cursor'),
+    '유물 목록에서 커서가 움직이지 않는다',
+  ).not.toBe(first);
+  await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-relic-cursor', first ?? '');
+
+  // 뺐던 유물을 도로 끼우면 공명도 원래대로 돌아온다 — 판정이 한쪽으로만 맞으면 안 된다.
+  await stepKey(page, 'Enter');
+  const refilled = (await page.locator('body').getAttribute('data-resonances')) ?? '';
+  expect(refilled, `되돌렸는데 공명이 원래대로 오지 않는다 (${emptied} → ${refilled})`).toBe(before);
+
+  await page.screenshot({ path: `${SHOT_DIR}/relic-swapped.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 탐색 중 아무 때나 장착 화면을 열고 제자리로 돌아온다 (T-029).
+ *
+ * 거점에서만 바꾸게 하면 유적 안에서 조합을 바꿀 수 없는데, 그건 조합이 게임의 중심이라는
+ * 말과 어긋난다 (GDD §5).
+ */
+test('탐색 중 R 로 장착 화면을 열고 제자리로 돌아온다', async ({ page }) => {
+  await enterOverworld(page);
+
+  const where = await page.locator('body').getAttribute('data-player');
+  await stepKey(page, 'r');
+
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'relic', { timeout: 10_000 });
+
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-player', where ?? '');
+});
+
+/**
  * 전투 한 판을 끝까지 진행한다 (T-020).
  *
  * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —

@@ -290,7 +290,16 @@ describe('유물 데이터', () => {
     expect(relicRegistry.missing([...STARTING_RELICS])).toEqual([]);
   });
 
-  it('시작 유물이 파티 슬롯 수를 넘지 않는다', () => {
-    expect(STARTING_RELICS.length).toBeLessThanOrEqual(2 * SLOTS_PER_MEMBER);
+  it('시작 유물이 슬롯 수보다 많다 (그래야 고를 것이 생긴다)', () => {
+    // T-029 에서 뜻이 뒤집혔다. 원래는 "슬롯을 넘지 않는다" 였는데, 그러면 전부 끼는 것이
+    // 유일한 답이라 장착 화면에 고를 것이 없다. 조합이 게임의 중심이라면 첫 화면부터
+    // 선택이 성립해야 한다.
+    expect(STARTING_RELICS.length).toBeGreaterThan(2 * SLOTS_PER_MEMBER);
+  });
+
+  it('시작 유물에 등급이 섞여 있다', () => {
+    // 전부 같은 등급이면 "안전한 것 대 센 것" 이라는 축이 첫 선택에 나타나지 않는다.
+    const tiers = new Set(STARTING_RELICS.map((id) => relic(id).tier));
+    expect(tiers.size).toBeGreaterThan(1);
   });
 });

@@ -12,8 +12,11 @@ function flag(name: string): string | undefined {
   return new URLSearchParams(window.location.search).get(name) ?? undefined;
 }
 
-export function startingScene(): 'battle' | 'title' {
-  return flag('scene') === 'battle' ? 'battle' : 'title';
+export function startingScene(): 'battle' | 'relic' | 'title' {
+  const scene = flag('scene');
+  if (scene === 'battle') return 'battle';
+  if (scene === 'relic') return 'relic';
+  return 'title';
 }
 
 export function encountersEnabled(): boolean {

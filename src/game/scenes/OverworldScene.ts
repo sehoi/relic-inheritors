@@ -25,6 +25,7 @@ import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
 import { getInventory, partyForBattle, partySkills, worldRandom } from '../partyStore.js';
 import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
+import type { RelicEntry } from './RelicScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
 import {
   TEXT_BOX_LAYOUT,
@@ -74,6 +75,7 @@ export class OverworldScene extends Phaser.Scene {
 
   private moveKeys!: Record<Direction, Phaser.Input.Keyboard.Key[]>;
   private interactKeys: Phaser.Input.Keyboard.Key[] = [];
+  private relicKeys: Phaser.Input.Keyboard.Key[] = [];
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
   private stepping = false;
@@ -143,6 +145,11 @@ export class OverworldScene extends Phaser.Scene {
     // 대화 중에는 걷지 않는다. 말하면서 걸어가면 대화 상대가 화면 밖으로 나간다.
     if (this.dialogue !== undefined) {
       if (this.interactJustPressed()) this.advanceDialogue();
+      return;
+    }
+
+    if (this.relicJustPressed()) {
+      this.openRelicScreen();
       return;
     }
 
@@ -302,6 +309,7 @@ export class OverworldScene extends Phaser.Scene {
     if (keyboard === null) {
       // 키보드가 없는 환경(터치 전용 등)에서도 씬 자체는 떠야 한다.
       this.moveKeys = { up: [], down: [], left: [], right: [] };
+      this.relicKeys = [];
       return;
     }
 
@@ -313,6 +321,7 @@ export class OverworldScene extends Phaser.Scene {
       right: [key('RIGHT'), key('D')],
     };
     this.interactKeys = [key('SPACE'), key('ENTER')];
+    this.relicKeys = [key('R')];
   }
 
   /**
@@ -321,6 +330,26 @@ export class OverworldScene extends Phaser.Scene {
    */
   private interactJustPressed(): boolean {
     return this.interactKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private relicJustPressed(): boolean {
+    return this.relicKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  /**
+   * 장착 화면으로 넘어간다. 돌아올 자리를 함께 넘겨 제자리에서 이어가게 한다 (T-029).
+   *
+   * 탐색 중 아무 때나 열 수 있다. 거점에서만 바꾸게 하면 유적 안에서 조합을 바꿀 수 없는데,
+   * 그건 조합이 게임의 중심이라는 말과 어긋난다 (GDD §5).
+   */
+  private openRelicScreen(): void {
+    this.leaving = true;
+    this.scene.start('relic', {
+      returnTo: {
+        mapId: this.mapId,
+        arrival: { position: this.walker.position, facing: this.walker.facing },
+      },
+    } satisfies RelicEntry);
   }
 
   /**
