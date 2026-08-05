@@ -31,6 +31,8 @@
 - [x] **T-009** 카메라 추적 + 맵 경계 클램프 — `core/world/camera.ts`, 맵을 60x40(960x640px)으로 확장해 카메라가 실제로 의미를 갖게 함
 - [x] **T-010** 대화 시스템 — `core/dialogue` (줄바꿈·쪽 나눔·진행), `core/world/interaction` (마주 본 대상 찾기, NPC 충돌), 텍스트박스 UI, 유적 입구 NPC 3명
 - [x] **T-011** 맵 간 이동 (입구/계단) + 플레이어 위치 복원 — `core/world/portal.ts`, 지하 1층 맵 추가, 왕복 검증
+- [ ] **유지보수: GitHub Actions 액션 버전 갱신**
+  - `actions/checkout@v4`, `actions/setup-node@v4`, `actions/upload-artifact@v4` 가 Node 20 대상이라 폐기 예고 경고가 뜬다. 동작에는 지장 없으나 언젠가 깨진다. v5 계열로 올리고 CI 초록 확인
 - [ ] **에셋 필요: 계단 타일** ⬅ 사람이 처리
   - 포탈이 도형 표식으로 그려진다. Tiny Dungeon 에 계단 타일이 없어 보인다. 없어도 진행에는 지장 없다
 - [x] **T-012** 데이터 검증 커널 + 레지스트리 — `core/validation`(문제 수집·경로 접두사·읽기 도우미), `core/data/registry`(키↔id 일치, 교차 참조). Zod는 도입하지 않음 (ADR-008)
