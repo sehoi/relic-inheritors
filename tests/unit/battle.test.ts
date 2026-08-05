@@ -4,15 +4,37 @@ import {
   battleOutcome,
   createBattle,
   currentActor,
+  fleeChance,
   isAlive,
   step,
+  validTargets,
   type BattleActor,
   type BattleState,
-  type TurnOrderTuning,
+  type BattleTuning,
 } from '../../src/core/battle/index.js';
+import type { DamageTuning } from '../../src/core/battle/damage.js';
 
-const TUNING: TurnOrderTuning = { jitter: 0.15 };
-const NO_JITTER: TurnOrderTuning = { jitter: 0 };
+/** 변동폭·치명타를 끈 결정론 설정. 전투 흐름을 볼 때 데미지가 흔들리면 검사가 어렵다. */
+const FLAT_DAMAGE: DamageTuning = {
+  pierce: 0.2,
+  defFactor: 0.5,
+  varianceMin: 1,
+  varianceMax: 1,
+  critMultiplier: 1.5,
+  critBaseChance: 0,
+  critLukFactor: 0,
+  critMaxChance: 0.5,
+  guardMultiplier: 0.5,
+  minDamage: 1,
+};
+
+const TUNING: BattleTuning = {
+  turnOrder: { jitter: 0.15 },
+  damage: FLAT_DAMAGE,
+  flee: { baseChance: 0.5, agiFactor: 0.02, minChance: 0.1, maxChance: 0.95 },
+};
+
+const NO_JITTER: BattleTuning = { ...TUNING, turnOrder: { jitter: 0 } };
 
 const actor = (
   id: string,
@@ -161,6 +183,140 @@ describe('step', () => {
     const state = createBattle(wiped, 1, NO_JITTER);
     expect(state.outcome).toBe('defeat');
     expect(() => step(state, { type: 'pass', actor: 'slime' }, NO_JITTER)).toThrow(/이미 끝난/);
+  });
+});
+
+describe('공격 커맨드', () => {
+  const attackRoster = (): BattleActor[] => [
+    actor('hero', 'party', 30),
+    actor('slime', 'enemy', 20),
+  ];
+
+  it('대상의 HP 를 깎고 damage 이벤트를 낸다', () => {
+    const state = createBattle(attackRoster(), 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'attack', actor: 'hero', target: 'slime' },
+      NO_JITTER,
+    );
+
+    // atk 10, def 5*0.5=2.5 => 7.5 => 반올림 8
+    expect(actorById(next, 'slime').hp).toBe(92);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'damage', source: 'hero', target: 'slime', amount: 8 }),
+    );
+  });
+
+  it('쓰러뜨리면 death 와 battleEnd 를 낸다', () => {
+    const dying = [actor('hero', 'party', 30), actor('slime', 'enemy', 20, 1)];
+    const state = createBattle(dying, 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'attack', actor: 'hero', target: 'slime' },
+      NO_JITTER,
+    );
+
+    expect(events).toContainEqual({ type: 'death', actor: 'slime' });
+    expect(events).toContainEqual({ type: 'battleEnd', outcome: 'victory' });
+    expect(next.outcome).toBe('victory');
+  });
+
+  it('없는 대상과 이미 쓰러진 대상을 거부한다', () => {
+    const state = createBattle([...attackRoster(), actor('corpse', 'enemy', 5, 0)], 1, NO_JITTER);
+    expect(() => step(state, { type: 'attack', actor: 'hero', target: 'ghost' }, NO_JITTER)).toThrow(
+      /전투에 없습니다/,
+    );
+    expect(() =>
+      step(state, { type: 'attack', actor: 'hero', target: 'corpse' }, NO_JITTER),
+    ).toThrow(/이미 쓰러졌습니다/);
+  });
+
+  it('원본 상태를 변경하지 않는다', () => {
+    const state = createBattle(attackRoster(), 1, NO_JITTER);
+    step(state, { type: 'attack', actor: 'hero', target: 'slime' }, NO_JITTER);
+    expect(actorById(state, 'slime').hp).toBe(100);
+  });
+});
+
+describe('방어 커맨드', () => {
+  const pair = (): BattleActor[] => [actor('hero', 'party', 30), actor('slime', 'enemy', 20)];
+
+  it('방어 상태가 되고 피해가 줄어든다', () => {
+    let state = createBattle(pair(), 1, NO_JITTER);
+    const guarded = step(state, { type: 'guard', actor: 'hero' }, NO_JITTER);
+    expect(guarded.events).toContainEqual({ type: 'guard', actor: 'hero' });
+    expect(actorById(guarded.state, 'hero').guarding).toBe(true);
+
+    state = step(guarded.state, { type: 'attack', actor: 'slime', target: 'hero' }, NO_JITTER).state;
+    // 평소 8 → 방어로 4
+    expect(actorById(state, 'hero').hp).toBe(96);
+  });
+
+  it('다음 자기 턴이 시작되면 풀린다', () => {
+    let state: BattleState = createBattle(pair(), 1, NO_JITTER);
+    state = step(state, { type: 'guard', actor: 'hero' }, NO_JITTER).state;
+    state = step(state, { type: 'pass', actor: 'slime' }, NO_JITTER).state;
+    // 새 라운드, 다시 hero 차례
+    state = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER).state;
+    expect(actorById(state, 'hero').guarding).toBe(false);
+  });
+});
+
+describe('도망 커맨드', () => {
+  const swift = (): BattleActor[] => [actor('hero', 'party', 100), actor('slime', 'enemy', 10)];
+  const slow = (): BattleActor[] => [actor('hero', 'party', 1), actor('slime', 'enemy', 200)];
+
+  it('민첩이 높으면 성공률이 높다', () => {
+    const fast = createBattle(swift(), 1, TUNING);
+    const sluggish = createBattle(slow(), 1, TUNING);
+    expect(fleeChance(fast, 'hero', TUNING.flee)).toBeGreaterThan(
+      fleeChance(sluggish, 'hero', TUNING.flee),
+    );
+  });
+
+  it('성공률은 상한과 하한 사이에 머문다 (항상 도망칠 수는 없다)', () => {
+    const fast = createBattle(swift(), 1, TUNING);
+    const sluggish = createBattle(slow(), 1, TUNING);
+    expect(fleeChance(fast, 'hero', TUNING.flee)).toBeLessThanOrEqual(TUNING.flee.maxChance);
+    expect(fleeChance(sluggish, 'hero', TUNING.flee)).toBeGreaterThanOrEqual(TUNING.flee.minChance);
+  });
+
+  it('성공하면 전투가 fled 로 끝난다', () => {
+    const always: BattleTuning = { ...TUNING, flee: { ...TUNING.flee, minChance: 1, maxChance: 1 } };
+    const state = createBattle(swift(), 1, always);
+    const { state: next, events } = step(state, { type: 'flee', actor: 'hero' }, always);
+
+    expect(events).toContainEqual({ type: 'flee', actor: 'hero', success: true });
+    expect(next.outcome).toBe('fled');
+    expect(() => step(next, { type: 'pass', actor: 'slime' }, always)).toThrow(/이미 끝난/);
+  });
+
+  it('실패하면 턴만 소모한다', () => {
+    const never: BattleTuning = { ...TUNING, flee: { ...TUNING.flee, minChance: 0, maxChance: 0 } };
+    const state = createBattle(swift(), 1, never);
+    const { state: next, events } = step(state, { type: 'flee', actor: 'hero' }, never);
+
+    expect(events).toContainEqual({ type: 'flee', actor: 'hero', success: false });
+    expect(next.outcome).toBe('ongoing');
+    expect(next.queue[0]).toBe('slime');
+  });
+
+  it('적은 도망칠 수 없다', () => {
+    let state = createBattle(swift(), 1, NO_JITTER);
+    state = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER).state;
+    expect(() => step(state, { type: 'flee', actor: 'slime' }, NO_JITTER)).toThrow(/파티만/);
+  });
+});
+
+describe('validTargets', () => {
+  it('상대편 생존자만 돌려준다', () => {
+    const state = createBattle(
+      [actor('hero', 'party', 30), actor('slime', 'enemy', 20), actor('corpse', 'enemy', 5, 0)],
+      1,
+      NO_JITTER,
+    );
+    expect(validTargets(state, 'hero').map((a) => a.id)).toEqual(['slime']);
+    expect(validTargets(state, 'slime').map((a) => a.id)).toEqual(['hero']);
   });
 });
 

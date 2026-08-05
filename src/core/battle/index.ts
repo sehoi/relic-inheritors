@@ -7,12 +7,17 @@
  * - 브라우저 없이 1초에 수천 판을 돌릴 수 있다 → 밸런스 자동 검증 (ADR-005)
  * - 이벤트 로그가 곧 애니메이션 스크립트가 된다 → 연출과 로직이 자동 동기화
  * - 시드를 로그에 남기면 "시드 4821에서 3턴째 크래시" 가 그대로 회귀 테스트가 된다
- *
- * T-013 범위는 골격까지다. 데미지는 T-014, 커맨드는 T-015 에서 붙인다.
  */
 
 import { createRng, restoreRng, type Rng } from '../rng/index.js';
-import type { Element, ElementAffinity } from './damage.js';
+import {
+  applyDamage,
+  resolveDamage,
+  type AttackSpec,
+  type DamageTuning,
+  type Element,
+  type ElementAffinity,
+} from './damage.js';
 
 export type ActorId = string;
 export type Side = 'party' | 'enemy';
@@ -39,13 +44,15 @@ export interface BattleActor {
   readonly erosion: number;
   /** 속성별 피해 배율. 없으면 1.0. 적이 스스로 약점을 선언하는 방식이다 — `damage.ts` 참조. */
   readonly affinity?: ElementAffinity;
+  /** 방어 중인가. **다음 자기 턴이 시작될 때 풀린다.** 없으면 false. */
+  readonly guarding?: boolean;
 }
 
 export function isAlive(actor: BattleActor): boolean {
   return actor.hp > 0;
 }
 
-export type BattleOutcome = 'ongoing' | 'victory' | 'defeat';
+export type BattleOutcome = 'ongoing' | 'victory' | 'defeat' | 'fled';
 
 export interface BattleState {
   /** 1부터 시작. 큐가 비면 다음 라운드로 넘어간다. */
@@ -58,8 +65,14 @@ export interface BattleState {
   readonly outcome: BattleOutcome;
 }
 
-/** 지금은 턴 넘기기만 있다. 공격·방어·도망은 T-015, 스킬·아이템은 T-016. */
-export type Command = { readonly type: 'pass'; readonly actor: ActorId };
+/** 기본 공격의 규격. 스킬은 T-016 에서 자체 `AttackSpec` 을 갖는다. */
+export const BASIC_ATTACK: AttackSpec = { power: 100, element: 'none', kind: 'physical' };
+
+export type Command =
+  | { readonly type: 'pass'; readonly actor: ActorId }
+  | { readonly type: 'attack'; readonly actor: ActorId; readonly target: ActorId }
+  | { readonly type: 'guard'; readonly actor: ActorId }
+  | { readonly type: 'flee'; readonly actor: ActorId };
 
 /**
  * 이벤트 로그는 곧 애니메이션 스크립트다 (T-020 이 이걸 재생한다).
@@ -80,6 +93,8 @@ export type BattleEvent =
       readonly elementMod: number;
     }
   | { readonly type: 'heal'; readonly target: ActorId; readonly amount: number }
+  | { readonly type: 'guard'; readonly actor: ActorId }
+  | { readonly type: 'flee'; readonly actor: ActorId; readonly success: boolean }
   | { readonly type: 'death'; readonly actor: ActorId }
   | { readonly type: 'battleEnd'; readonly outcome: Exclude<BattleOutcome, 'ongoing'> }
   | { readonly type: 'message'; readonly text: string };
@@ -97,6 +112,21 @@ export interface TurnOrderTuning {
    * 반대로 너무 크면 민첩 스탯에 투자할 이유가 사라진다.
    */
   readonly jitter: number;
+}
+
+export interface FleeTuning {
+  readonly baseChance: number;
+  /** 민첩 차 1당 성공률 증감 */
+  readonly agiFactor: number;
+  readonly minChance: number;
+  /** 100%로 두지 않는다 — 도망이 항상 통하면 모든 전투가 선택 사항이 된다. */
+  readonly maxChance: number;
+}
+
+export interface BattleTuning {
+  readonly turnOrder: TurnOrderTuning;
+  readonly damage: DamageTuning;
+  readonly flee: FleeTuning;
 }
 
 /**
@@ -133,14 +163,14 @@ export function battleOutcome(actors: readonly BattleActor[]): BattleOutcome {
 export function createBattle(
   actors: readonly BattleActor[],
   seed: number,
-  tuning: TurnOrderTuning,
+  tuning: BattleTuning,
 ): BattleState {
   if (actors.length === 0) {
     throw new RangeError('전투에 참가자가 없습니다.');
   }
 
   const rng = createRng(seed);
-  const queue = buildQueue(actors, rng, tuning);
+  const queue = buildQueue(actors, rng, tuning.turnOrder);
 
   return {
     round: 1,
@@ -167,17 +197,46 @@ export function currentActor(state: BattleState): BattleActor | undefined {
   return id === undefined ? undefined : actorById(state, id);
 }
 
+/** 공격 대상이 될 수 있는 상대편 생존자. UI 의 대상 커서와 AI 가 같이 쓴다. */
+export function validTargets(state: BattleState, actorId: ActorId): readonly BattleActor[] {
+  const actor = actorById(state, actorId);
+  return state.actors.filter((other) => other.side !== actor.side && isAlive(other));
+}
+
+/**
+ * 도망 성공률. 민첩이 높을수록 잘 도망친다.
+ *
+ * 상한을 100%로 두지 않는다 — 도망이 항상 통하면 모든 전투가 선택 사항이 되고,
+ * 유물 조합을 고민할 이유가 사라진다.
+ */
+export function fleeChance(
+  state: BattleState,
+  actorId: ActorId,
+  tuning: FleeTuning,
+): number {
+  const actor = actorById(state, actorId);
+  const foes = state.actors.filter((a) => a.side !== actor.side && isAlive(a));
+  const avgFoeAgi =
+    foes.length === 0 ? 0 : foes.reduce((sum, a) => sum + a.stats.agi, 0) / foes.length;
+
+  const raw = tuning.baseChance + (actor.stats.agi - avgFoeAgi) * tuning.agiFactor;
+  return Math.min(Math.max(raw, tuning.minChance), tuning.maxChance);
+}
+
+function replaceActor(
+  actors: readonly BattleActor[],
+  updated: BattleActor,
+): readonly BattleActor[] {
+  return actors.map((a) => (a.id === updated.id ? updated : a));
+}
+
 /**
  * 한 명의 행동을 처리하고 턴을 넘긴다.
  *
  * 커맨드의 `actor` 가 지금 차례와 다르면 던진다. UI 와 상태가 어긋난 채로 진행하면
  * 엉뚱한 액터가 행동하고, 그 원인을 나중에 추적하기 어렵다.
  */
-export function step(
-  state: BattleState,
-  command: Command,
-  tuning: TurnOrderTuning,
-): StepResult {
+export function step(state: BattleState, command: Command, tuning: BattleTuning): StepResult {
   if (state.outcome !== 'ongoing') {
     throw new Error(`이미 끝난 전투입니다 (${state.outcome}).`);
   }
@@ -191,22 +250,71 @@ export function step(
   }
 
   const events: BattleEvent[] = [{ type: 'turnStart', actor: acting.id }];
+  const rng = restoreRng(state.rngState);
 
-  // T-014 이후 여기서 커맨드의 실제 효과가 처리된다.
+  // 방어는 다음 자기 턴이 시작될 때 풀린다.
+  let actors = replaceActor(state.actors, { ...acting, guarding: false });
+  let fled = false;
+
+  switch (command.type) {
+    case 'pass':
+      break;
+
+    case 'guard': {
+      actors = replaceActor(actors, { ...acting, guarding: true });
+      events.push({ type: 'guard', actor: acting.id });
+      break;
+    }
+
+    case 'attack': {
+      const target = actors.find((a) => a.id === command.target);
+      if (target === undefined) {
+        throw new Error(`대상 "${command.target}" 가 전투에 없습니다.`);
+      }
+      if (!isAlive(target)) {
+        throw new Error(`대상 "${command.target}" 는 이미 쓰러졌습니다.`);
+      }
+
+      const result = resolveDamage(acting, target, BASIC_ATTACK, rng, tuning.damage);
+      const hurt = applyDamage(target, result.amount);
+      actors = replaceActor(actors, hurt);
+
+      events.push({
+        type: 'damage',
+        source: acting.id,
+        target: target.id,
+        amount: result.amount,
+        critical: result.critical,
+        element: BASIC_ATTACK.element,
+        elementMod: result.elementMod,
+      });
+      if (!isAlive(hurt)) events.push({ type: 'death', actor: hurt.id });
+      break;
+    }
+
+    case 'flee': {
+      // 적의 도망은 지원하지 않는다. 몬스터가 달아나는 연출이 필요해지면 별도 커맨드로 만든다.
+      if (acting.side !== 'party') {
+        throw new Error('도망은 파티만 할 수 있습니다.');
+      }
+      const success = rng.chance(fleeChance(state, acting.id, tuning.flee));
+      fled = success;
+      events.push({ type: 'flee', actor: acting.id, success });
+      break;
+    }
+  }
+
   events.push({ type: 'turnEnd', actor: acting.id });
 
   // 죽은 액터는 남은 순서에서도 빠진다.
-  const alive = new Set(state.actors.filter(isAlive).map((a) => a.id));
+  const alive = new Set(actors.filter(isAlive).map((a) => a.id));
   let queue = state.queue.slice(1).filter((id) => alive.has(id));
   let round = state.round;
-  let rngState = state.rngState;
 
-  const outcome = battleOutcome(state.actors);
+  const outcome: BattleOutcome = fled ? 'fled' : battleOutcome(actors);
 
   if (outcome === 'ongoing' && queue.length === 0) {
-    const rng = restoreRng(state.rngState);
-    queue = buildQueue(state.actors, rng, tuning);
-    rngState = rng.getState();
+    queue = buildQueue(actors, rng, tuning.turnOrder);
     round += 1;
     events.push({ type: 'roundStart', round });
   }
@@ -216,7 +324,7 @@ export function step(
   }
 
   return {
-    state: { round, actors: state.actors, queue, rngState, outcome },
+    state: { round, actors, queue, rngState: rng.getState(), outcome },
     events,
   };
 }

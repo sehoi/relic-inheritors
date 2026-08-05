@@ -50,6 +50,8 @@ export interface DamageTuning {
   /** 행운 1당 치명타 확률 증가분 */
   readonly critLukFactor: number;
   readonly critMaxChance: number;
+  /** 방어 중인 대상이 받는 피해 배율 */
+  readonly guardMultiplier: number;
   readonly minDamage: number;
 }
 
@@ -59,6 +61,7 @@ export interface DamageResult {
   readonly elementMod: number;
   /** 관통 하한에 걸렸는가. 밸런스 검증(GDD §5.5)이 이 값을 본다. */
   readonly pierced: boolean;
+  readonly guarded: boolean;
 }
 
 export function affinityOf(actor: BattleActor, element: Element): number {
@@ -103,12 +106,17 @@ export function resolveDamage(
   const elementMod = affinityOf(defender, attack.element);
   const critMod = critical ? tuning.critMultiplier : 1;
 
+  // 방어는 관통 하한 **뒤에** 곱해진다. 하한은 "방어력으로 막을 수 없는 몫"이지
+  // "방어 커맨드로도 못 줄이는 몫"이 아니다 — 방어를 고르는 선택에는 값이 있어야 한다.
+  const guarded = defender.guarding === true;
+  const guardMod = guarded ? tuning.guardMultiplier : 1;
+
   const amount = Math.max(
     tuning.minDamage,
-    Math.round(base * variance * elementMod * critMod),
+    Math.round(base * variance * elementMod * critMod * guardMod),
   );
 
-  return { amount, critical, elementMod, pierced };
+  return { amount, critical, elementMod, pierced, guarded };
 }
 
 /** HP 를 깎은 새 액터를 돌려준다. 0 미만으로 내려가지 않는다. */
