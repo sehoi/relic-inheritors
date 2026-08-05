@@ -10,7 +10,19 @@
  */
 
 import { seedRange, simulateMany, type SimSummary } from '../src/core/battle/simulate.js';
+import { sweep } from '../src/core/battle/sweep.js';
+import {
+  adoptionRates,
+  enumerateBuilds,
+  groupBySize,
+  rankSpread,
+  shareInBand,
+  thinBuilds,
+  topBuilds,
+} from '../src/core/relic/builds.js';
+import { SLOTS_PER_MEMBER } from '../src/core/relic/index.js';
 import { BATTLE_TUNING } from '../src/data/battle.js';
+import { BUILD_SWEEP, RELIC_INVARIANTS } from '../src/data/invariants.js';
 import { RELICS, relic } from '../src/data/relics.js';
 import {
   BUILD_SKEWS,
@@ -85,5 +97,53 @@ for (const entry of Object.values(RELICS)) {
     ),
   );
 }
+
+console.log(
+  `\n\n유물 조합 훑기 — 파티 Lv${BUILD_SWEEP.partyLevel} vs 잡몹 Lv${BUILD_SWEEP.enemyLevel}\n`,
+);
+
+const builds = thinBuilds(
+  enumerateBuilds(Object.keys(RELICS), Math.min(Object.keys(RELICS).length, SLOTS_PER_MEMBER * 2)),
+  BUILD_SWEEP.maxBuilds,
+);
+
+const scored = sweep(
+  builds,
+  (build) =>
+    relicFight(BUILD_SWEEP.partyLevel, build.relics.map(relic), {
+      opponent: BUILD_SWEEP.opponent,
+      enemyLevel: BUILD_SWEEP.enemyLevel,
+    }),
+  seeds,
+  BATTLE_TUNING,
+).map((entry) => ({ build: entry.item, winRate: entry.summary.winRate }));
+
+// 크기가 같은 조합끼리 비교한다 (ADR-013). 섞으면 "많이 낄수록 이긴다" 가 격차로 잡힌다.
+for (const [size, group] of groupBySize(scored)) {
+  const rates = group.map((row) => row.winRate);
+  const measurable = group.length >= RELIC_INVARIANTS.minClassSize;
+
+  console.log(
+    `크기 ${size} (${group.length}개)` +
+      (measurable
+        ? `  격차 ${pct(rankSpread(rates, RELIC_INVARIANTS.dominanceRank))}` +
+          ` (상한 ${pct(RELIC_INVARIANTS.maxRankSpread)})` +
+          `  밴드 ${pct(shareInBand(rates, RELIC_INVARIANTS.healthyBand.low, RELIC_INVARIANTS.healthyBand.high))}` +
+          ` (하한 ${pct(RELIC_INVARIANTS.minBandShare)})`
+        : '  ← 조합이 하나뿐이라 재지 않는다'),
+  );
+
+  for (const row of [...group].sort((a, b) => b.winRate - a.winRate)) {
+    console.log(`  ${pad(pct(row.winRate), 8)}  ${row.build.id}`);
+  }
+}
+
+const good = topBuilds(scored, RELIC_INVARIANTS.goodBuildRatio);
+console.log(`\n좋은 조합(상위 ${pct(RELIC_INVARIANTS.goodBuildRatio)}): ${good.map((b) => b.id).join(' | ')}`);
+console.log(
+  `채택률(하한 ${pct(RELIC_INVARIANTS.minAdoption)}): ${[...adoptionRates(good, Object.keys(RELICS))]
+    .map(([id, rate]) => `${id} ${pct(rate)}`)
+    .join(', ')}`,
+);
 
 console.log('\n판정은 `npm run test` 의 tests/balance 가 한다. 여기 숫자는 참고용이다.');

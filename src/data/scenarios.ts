@@ -121,6 +121,13 @@ export interface RelicFightOptions {
   readonly ranks?: Readonly<Record<RelicId, number>>;
   /** 공명 등에서 오는 파티 전체 침식 완화 배수. */
   readonly erosionRelief?: number;
+  /**
+   * 적 레벨. 생략하면 파티와 같다.
+   *
+   * 조합 훑기(GDD §5.5 불변식 1·2)에는 **승률이 갈리는 난이도**가 필요하다.
+   * 전부 이기거나 전부 지는 구간에서는 조합의 차이가 승률에 나타나지 않아, 측정 자체가 성립하지 않는다.
+   */
+  readonly enemyLevel?: number;
 }
 
 /**
@@ -142,15 +149,16 @@ export function relicFight(
     makeCombatant(`party-${i + 1}`, 'party', stats),
   );
 
+  const enemyLevel = options.enemyLevel ?? level;
   const enemies =
     options.opponent === 'boss'
       ? [
-          makeCombatant('boss', 'enemy', statsAtLevel(MOB_CURVES, level, BOSS_MULTIPLIERS), {
+          makeCombatant('boss', 'enemy', statsAtLevel(MOB_CURVES, enemyLevel, BOSS_MULTIPLIERS), {
             affinity: { fire: 0.75 },
           }),
         ]
       : Array.from({ length: MOB_COUNT }, (_, i) =>
-          makeCombatant(`mob-${i + 1}`, 'enemy', statsAtLevel(MOB_CURVES, level)),
+          makeCombatant(`mob-${i + 1}`, 'enemy', statsAtLevel(MOB_CURVES, enemyLevel)),
         );
 
   const actors = [...party, ...enemies];
