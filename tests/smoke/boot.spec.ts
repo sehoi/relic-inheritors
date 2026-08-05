@@ -31,7 +31,9 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
     errors.push(`[pageerror] ${error.message}`);
   });
 
-  await page.goto('/');
+  // 이 테스트는 탐색 기능만 본다. 인카운터를 끄지 않으면 16걸음을 걷는 동안
+  // 전투가 끼어들어(임계 8~20걸음) 무엇을 검사하는 테스트인지 흐려진다.
+  await page.goto('/?encounters=off');
 
   // 캔버스가 실제로 만들어졌는가 (Phaser 초기화 성공)
   await expect(page.locator('#game canvas')).toBeVisible({ timeout: 20_000 });
@@ -130,6 +132,70 @@ test('부팅 → 타이틀 → 오버월드 전환이 콘솔 에러 없이 완�
   await expect(page.locator('body')).toHaveAttribute('data-player', '11,4');
 
   await page.screenshot({ path: `${SHOT_DIR}/overworld.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 탐색 → 전투 → 복귀가 하나의 흐름으로 이어진다 (T-021).
+ *
+ * M2 의 마지막 조각이다. 걸어다니다 전투가 벌어지고, 끝나면 **걷던 자리로 돌아온다.**
+ */
+test('탐색 중 인카운터가 발생하고 전투 후 제자리로 돌아온다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+
+  // 입구 홀 안에서 좌우로 오간다. 임계는 8~20걸음이므로 넉넉히 걷는다.
+  for (let i = 0; i < 40; i += 1) {
+    if ((await page.locator('body').getAttribute('data-scene')) === 'battle') break;
+    await stepKey(page, i % 2 === 0 ? 'ArrowRight' : 'ArrowLeft');
+  }
+
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 10_000 });
+
+  // 전투는 **이동을 마친 뒤** 벌어지므로, 복귀 지점은 마지막으로 밟은 칸이다.
+  // 전투 씬은 data-player 를 건드리지 않아 그 값이 그대로 남아 있다.
+  const encounterTile = (await page.locator('body').getAttribute('data-player')) ?? '';
+  await page.screenshot({ path: `${SHOT_DIR}/encounter.png` });
+
+  // 전투를 끝낸다.
+  for (let i = 0; i < 160; i += 1) {
+    const phase = await page.locator('body').getAttribute('data-battle-phase');
+    if (phase === 'over') break;
+    if (phase === 'command' || phase === 'target') await stepKey(page, 'Enter');
+    else await page.waitForTimeout(140);
+  }
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'over', {
+    timeout: 30_000,
+  });
+
+  const outcome = await page.locator('body').getAttribute('data-battle-outcome');
+  await stepKey(page, 'Enter');
+
+  if (outcome === 'defeat') {
+    // 전멸하면 타이틀로 돌아간다. 세이브(M4)가 생기면 마지막 저장 지점 복원으로 바뀐다.
+    await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 10_000 });
+  } else {
+    await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+      timeout: 10_000,
+    });
+    await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance');
+    // 전투가 벌어진 자리에서 이어간다.
+    await expect(page.locator('body')).toHaveAttribute('data-player', encounterTile);
+  }
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });

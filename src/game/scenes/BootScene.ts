@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { assetCatalog } from '../assets/catalog.js';
 import { queueAssets } from '../assets/queueAssets.js';
 import { markScene } from '../domState.js';
+import { startingScene } from '../devFlags.js';
 
 /**
  * 에셋 로딩과 초기 설정 담당.
@@ -22,9 +23,6 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     markScene('boot');
 
-    // `?scene=battle` 로 바로 전투를 띄운다. 개발·테스트용 진입점이며,
-    // 탐색에서 전투로 넘어가는 실제 경로는 T-021(인카운터)이 만든다.
-    const requested = new URLSearchParams(window.location.search).get('scene');
-    this.scene.start(requested === 'battle' ? 'battle' : 'title');
+    this.scene.start(startingScene());
   }
 }

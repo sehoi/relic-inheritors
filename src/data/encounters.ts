@@ -2,7 +2,10 @@ import type { AiProfile } from '../core/battle/ai.js';
 import type { ActorId, BattleActor } from '../core/battle/index.js';
 import type { Inventory } from '../core/battle/item.js';
 import type { Skill } from '../core/battle/skill.js';
+import { pickWeighted, type EncounterTuning } from '../core/world/encounter.js';
+import type { Rng } from '../core/rng/index.js';
 import { aiProfile } from './ai.js';
+import type { MapId } from './maps.js';
 import { MOB_CURVES, PARTY_CURVES, makeCombatant, statsAtLevel } from './progression.js';
 import { skill } from './skills.js';
 
@@ -55,9 +58,13 @@ export function mobTile(actorId: ActorId): number {
   return MOB_TEMPLATES[kind]?.tile ?? 108;
 }
 
-/** 유적 입구의 표준 조우. T-021 에서 인카운터 테이블이 이걸 고른다. */
-export function ruinEncounter(level: number, mobCount = 2): Encounter {
-  const party = starterParty(level);
+/** 유적 입구의 표준 조우. 인카운터 테이블이 이걸 고른다. */
+export function ruinEncounter(
+  level: number,
+  mobCount = 2,
+  party: readonly BattleActor[] = starterParty(level),
+  inventory: Inventory = { herb: 3, antidote: 1, 'cleansing-stone': 1, 'ashen-ember': 1 },
+): Encounter {
   const mobs = Array.from({ length: mobCount }, (_, i) =>
     ruinMob(i % 2 === 0 ? 'remnant' : 'warden', i + 1, level),
   );
@@ -76,6 +83,65 @@ export function ruinEncounter(level: number, mobCount = 2): Encounter {
       vanguard: [skill('stone-fist')],
       caster: [skill('ember-lash'), skill('sundering-arc')],
     },
-    inventory: { herb: 3, antidote: 1, 'cleansing-stone': 1, 'ashen-ember': 1 },
+    inventory,
   };
+}
+
+/**
+ * 지역별 인카운터 테이블 (GDD §6.1).
+ *
+ * 깊은 층일수록 적이 많다 — 층 자체가 난이도 축이 된다.
+ */
+export interface EncounterEntry {
+  readonly weight: number;
+  readonly mobCount: number;
+}
+
+export const ENCOUNTER_TABLES: Readonly<Record<MapId, readonly EncounterEntry[]>> = {
+  'ruin-entrance': [
+    { weight: 6, mobCount: 2 },
+    { weight: 3, mobCount: 1 },
+    { weight: 1, mobCount: 3 },
+  ],
+  'ruin-depths': [
+    { weight: 5, mobCount: 3 },
+    { weight: 4, mobCount: 2 },
+    { weight: 1, mobCount: 4 },
+  ],
+};
+
+/**
+ * 걸음 수 범위 (GDD §6.1).
+ *
+ * 최소 8걸음은 안전하다 — 전투 직후 바로 또 싸우면 탐색이 성립하지 않는다.
+ * 최대 20걸음 안에는 반드시 한 번. T-019 시뮬레이터가 연속 전투를 재게 되면 조정 대상이다.
+ */
+export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 8, maxSteps: 20 };
+
+/** 지역 레벨. 층이 깊을수록 높다. */
+export const AREA_LEVELS: Readonly<Record<MapId, number>> = {
+  'ruin-entrance': 6,
+  'ruin-depths': 9,
+};
+
+/** 그 지역에서 한 번 조우를 뽑는다. */
+export function rollEncounter(
+  mapId: MapId,
+  rng: Rng,
+  party?: readonly BattleActor[],
+  inventory?: Inventory,
+): Encounter {
+  const table = ENCOUNTER_TABLES[mapId];
+  const entry = pickWeighted(
+    table.map((row) => ({ weight: row.weight, value: row })),
+    rng,
+  );
+  const level = AREA_LEVELS[mapId];
+
+  return ruinEncounter(
+    level,
+    entry.mobCount,
+    party ?? starterParty(level),
+    inventory ?? { herb: 3, antidote: 1, 'cleansing-stone': 1, 'ashen-ember': 1 },
+  );
 }
