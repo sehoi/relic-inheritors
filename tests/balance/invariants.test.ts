@@ -67,6 +67,26 @@ describe('불변식 7 · 방어 편향 부재', () => {
   });
 });
 
+describe('불변식 8 · 레벨 간 난이도 붕괴 부재 (ADR-010)', () => {
+  it('보스전 승률이 레벨에 따라 무너지지 않는다', () => {
+    // 처음 측정했을 때 99% → 44% → 39% 였다. 원인은 침식이 아니라
+    // 보스의 MP 풀이 커질수록 고위력 스킬을 반복 시전할 수 있는 것이었다 (ADR-010).
+    const rates = SAMPLE_LEVELS.map((level) => run(bossFight(level)).winRate);
+    const spread = Math.max(...rates) - Math.min(...rates);
+
+    expect(
+      spread,
+      `레벨별 승률: ${rates.map((r) => `${(r * 100).toFixed(0)}%`).join(' / ')}`,
+    ).toBeLessThanOrEqual(0.45);
+  });
+
+  it('어떤 레벨에서도 보스전이 절망적이지 않다', () => {
+    for (const level of SAMPLE_LEVELS) {
+      expect(run(bossFight(level)).winRate, `Lv${level}`).toBeGreaterThan(0.3);
+    }
+  });
+});
+
 describe('불변식 3 · 침식 압박 (부분)', () => {
   it('긴 전투에서는 폭주가 실제로 발생한다', () => {
     // 완전한 형태(유적 1회 완주 시 정화 1회 이상 필요)는 연속 전투가 필요하다.

@@ -13,7 +13,7 @@ import {
 } from '../../core/battle/index.js';
 import { chooseCommand } from '../../core/battle/ai.js';
 import { itemBlockReason, type Item } from '../../core/battle/item.js';
-import { skillBlockReason, type Skill } from '../../core/battle/skill.js';
+import { erosionThreshold, skillBlockReason, type Skill } from '../../core/battle/skill.js';
 import { createRng } from '../../core/rng/index.js';
 import { BATTLE_TUNING } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
@@ -189,7 +189,7 @@ export class BattleScene extends Phaser.Scene {
 
       gauges.hp.setRatio(actor.hp / actor.stats.maxHp);
       gauges.mp.setRatio(actor.stats.maxMp === 0 ? 0 : actor.mp / actor.stats.maxMp);
-      gauges.erosion.setRatio(actor.erosion / BATTLE_TUNING.erosion.threshold);
+      gauges.erosion.setRatio(actor.erosion / erosionThreshold(actor, BATTLE_TUNING.erosion));
 
       const label = this.partyLabels.get(id);
       label?.setColor(isAlive(actor) ? '#e8e3d3' : '#6f7b8a');

@@ -39,7 +39,9 @@ export const MOB_CURVES: StatCurves = {
 /** 보스는 같은 레벨 잡몹에 배율을 곱한다. HP 배율이 큰 이유는 보스전을 길게 만들기 위해서다. */
 export const BOSS_MULTIPLIERS: Readonly<Record<keyof Stats, number>> = {
   maxHp: 8,
-  maxMp: 2,
+  // MP 는 배로 주지 않는다. 보스는 액터가 하나라 MP 가 곧 강력한 스킬의 시전 횟수인데,
+  // 그게 레벨에 따라 배로 늘면 후반 보스가 손댈 수 없이 강해진다 (ADR-010 실측).
+  maxMp: 1,
   atk: 1.4,
   def: 1.3,
   mag: 1.4,

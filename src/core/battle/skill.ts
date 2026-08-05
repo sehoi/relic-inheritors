@@ -28,8 +28,16 @@ export interface Skill {
 }
 
 export interface ErosionTuning {
-  /** 이 값에 닿으면 폭주한다. */
-  readonly threshold: number;
+  /** 임계의 고정분. 저레벨에서 임계가 지나치게 낮아지는 것을 막는다. */
+  readonly base: number;
+  /**
+   * 최대 MP 1당 임계 증가분.
+   *
+   * **임계를 고정값으로 두면 후반에 자멸한다** (ADR-010). MP 풀이 커질수록 시전 횟수가
+   * 늘고 침식도 비례해 쌓이는데, 임계만 그대로면 레벨이 오를수록 폭주가 급증한다.
+   * 실측에서 보스전 승률이 Lv5 99% → Lv40 37% 로 무너졌다.
+   */
+  readonly perMaxMp: number;
   /**
    * 폭주 후 남는 침식의 비율.
    *
@@ -37,12 +45,21 @@ export interface ErosionTuning {
    * 최적 전략이 된다. 일부만 해소되어야 거점 정화소에 갈 이유가 생긴다.
    */
   readonly reliefRatio: number;
-  /** 상한. 이 위로는 쌓이지 않는다. */
-  readonly max: number;
+  /** 상한 배수. 임계의 이 배까지만 쌓인다. */
+  readonly maxMultiplier: number;
+}
+
+/** 이 액터가 폭주하는 침식 수치. 최대 MP 가 클수록 높다. */
+export function erosionThreshold(actor: BattleActor, tuning: ErosionTuning): number {
+  return tuning.base + actor.stats.maxMp * tuning.perMaxMp;
+}
+
+export function erosionCap(actor: BattleActor, tuning: ErosionTuning): number {
+  return erosionThreshold(actor, tuning) * tuning.maxMultiplier;
 }
 
 export function isOverloaded(actor: BattleActor, tuning: ErosionTuning): boolean {
-  return actor.erosion >= tuning.threshold;
+  return actor.erosion >= erosionThreshold(actor, tuning);
 }
 
 /**
@@ -78,7 +95,7 @@ export function applySkillCost(
   return {
     ...actor,
     mp: Math.max(0, actor.mp - skill.mpCost),
-    erosion: Math.min(tuning.max, actor.erosion + skill.erosion),
+    erosion: Math.min(erosionCap(actor, tuning), actor.erosion + skill.erosion),
   };
 }
 
