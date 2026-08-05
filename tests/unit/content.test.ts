@@ -12,7 +12,9 @@ import {
 import { DIALOGUE_SCRIPTS, dialogueScript } from '../../src/data/dialogue.js';
 import { NPCS_BY_MAP } from '../../src/data/npcs.js';
 import { PORTALS_BY_MAP } from '../../src/data/portals.js';
-import { MAP_FILES, MAP_IDS, STARTING_MAP, type MapId } from '../../src/data/maps.js';
+import { ZONES_BY_MAP, zonesForMap } from '../../src/data/zones.js';
+import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
+import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
 /**
  * 콘텐츠 정합성.
@@ -56,6 +58,61 @@ describe('맵', () => {
 
   it.each([...MAP_IDS])('%s: 색인된 타일셋만 참조한다', (id) => {
     expect(mapOf(id).tilesets.map((t) => t.assetKey)).toEqual(['tiles-dungeon']);
+  });
+
+  it.each([...MAP_IDS])('%s: 화면에 띄울 이름이 있다', (id) => {
+    expect(MAP_NAMES[id].trim().length).toBeGreaterThan(0);
+  });
+});
+
+describe('구역 배치', () => {
+  it.each([...MAP_IDS])('%s: 걸어갈 수 있는 모든 칸이 어느 구역엔가 속한다', (id) => {
+    // 빈틈이 남으면 이름도 없고 전투도 안 나오는 유령 구역이 된다.
+    expect(() => validateZones(id, mapOf(id), zonesForMap(id))).not.toThrow();
+  });
+
+  it.each([...MAP_IDS])('%s: 스폰 지점이 어느 구역엔가 속한다', (id) => {
+    const spawn = spawnWalker(mapOf(id)).position;
+    expect(zoneAt(zonesForMap(id), spawn.x, spawn.y), `${id} 스폰 (${spawn.x}, ${spawn.y})`)
+      .toBeDefined();
+  });
+
+  it('NPC 는 안전지대에 선다', () => {
+    // 말을 거는 도중에 습격당하면 안전해 보이는 곳이 안전하지 않다는 뜻이 된다.
+    const problems: string[] = [];
+
+    for (const id of MAP_IDS) {
+      const zones = zonesForMap(id);
+      for (const npc of NPCS_BY_MAP[id] ?? []) {
+        if (encountersAt(zones, npc.position.x, npc.position.y)) {
+          const zone = zoneAt(zones, npc.position.x, npc.position.y);
+          problems.push(`${id}/${npc.id}: 전투가 벌어지는 구역 "${zone?.id ?? '없음'}" 에 서 있다`);
+        }
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it('시작 맵에 안전지대가 있다', () => {
+    // 처음 조작을 배우는 곳에서 습격당하면 무엇을 배우는 중인지 알 수 없게 된다.
+    expect(zonesForMap(STARTING_MAP).some((zone) => !zone.encounters)).toBe(true);
+  });
+
+  it('시작 지점이 안전지대다', () => {
+    const spawn = spawnWalker(mapOf(STARTING_MAP)).position;
+    expect(encountersAt(zonesForMap(STARTING_MAP), spawn.x, spawn.y)).toBe(false);
+  });
+
+  it('구역 이름이 맵 사이에서도 겹치지 않는다 (같은 이름이 두 곳이면 위치를 알려주지 못한다)', () => {
+    const names = Object.values(ZONES_BY_MAP).flatMap((zones) => zones.map((zone) => zone.name));
+    expect(names.length).toBe(new Set(names).size);
+  });
+
+  it('탐색할 수 있는 구역이 안전지대보다 많다 (안전지대가 흔하면 탐색의 긴장이 사라진다)', () => {
+    const all = Object.values(ZONES_BY_MAP).flat();
+    const safe = all.filter((zone) => !zone.encounters).length;
+    expect(safe * 2).toBeLessThan(all.length);
   });
 });
 

@@ -35,6 +35,18 @@ export function markMap(mapId: string): void {
 }
 
 /**
+ * 지금 선 칸의 구역과 위험도.
+ *
+ * 안전지대에서 전투가 벌어지지 않는다는 것은 **아무 일도 일어나지 않음**으로 드러나는
+ * 성질이라, 화면만 봐서는 "안전해서 안 나왔는지, 아직 걸음이 모자란지" 구분할 수 없다.
+ * 스모크가 그 둘을 가르려면 이 값이 필요하다.
+ */
+export function markZone(zoneId: string | undefined, encounters: boolean): void {
+  document.body.dataset['zone'] = zoneId ?? 'none';
+  document.body.dataset['encounterZone'] = encounters ? 'wild' : 'safe';
+}
+
+/**
  * 전투 진행 상태.
  *
  * 스모크가 이걸 보고 "지금 입력을 받는 중인지, 연출 중인지, 끝났는지" 를 판정한다.
