@@ -10,6 +10,24 @@ import { skill } from './skills.js';
  * **페이즈 전환이 실제로 체감되는지** 확인하기 위한 표본이다.
  */
 export const AI_PROFILES: Readonly<Record<string, AiProfile>> = {
+  /**
+   * 파티 측정용. 시뮬레이터가 파티를 굴릴 때 쓴다.
+   * 스킬 비중을 넣어 **MP 와 침식이 실제로 소모되게** 한다 — 기본 공격만 반복하면
+   * 자원 압박이 측정되지 않는다.
+   */
+  striker: {
+    id: 'striker',
+    phases: [
+      {
+        id: 'always',
+        options: [
+          { weight: 6, kind: 'attack', targeting: 'weakest' },
+          { weight: 4, kind: 'skill', skill: skill('ember-lash'), targeting: 'weakest' },
+        ],
+      },
+    ],
+  },
+
   // 단순 근접 적. 가끔 방어한다.
   brute: {
     id: 'brute',
