@@ -66,6 +66,21 @@ export const ZONES_BY_MAP: Readonly<Record<MapId, readonly Zone[]>> = {
     },
   ],
 
+  /**
+   * 거점은 통째로 안전지대다.
+   *
+   * 유적 안의 야영지와 달리 여기는 **돌아올 곳**이다. 회복하고 조합을 다시 짜는 자리에
+   * 전투가 끼어들면 그 목적이 성립하지 않는다.
+   */
+  haven: [
+    {
+      id: 'haven-yard',
+      name: '안뜰',
+      rects: [{ x: 2, y: 2, width: 36, height: 20 }],
+      encounters: false,
+    },
+  ],
+
   // 지하에는 안전지대가 없다. 사람이 내려올 곳이 아니다 (`data/npcs.ts` 참조).
   'ruin-depths': [
     {

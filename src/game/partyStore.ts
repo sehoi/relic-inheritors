@@ -3,6 +3,7 @@ import type { Inventory } from '../core/battle/item.js';
 import type { Skill } from '../core/battle/skill.js';
 import type { AilmentState } from '../core/battle/status.js';
 import { createRng, restoreRng, type Rng } from '../core/rng/index.js';
+import { cleansedErosion, type CleansingTuning } from '../core/world/facility.js';
 import {
   SAVE_VERSION,
   type SaveData,
@@ -319,6 +320,33 @@ export function resetParty(): void {
   owned = STARTING_RELICS;
   collectedSites = new Set();
   partyExp = 0;
+}
+
+/**
+ * 정화소에서 파티의 침식을 씻는다. 실제로 줄어든 총량을 돌려준다 (T-040).
+ *
+ * 씻을 것이 없으면 0 — 화면이 "아무 일도 없었다" 를 말할 수 있어야 한다.
+ */
+export function cleanseParty(tuning: CleansingTuning): number {
+  const next: Record<ActorId, Vitals> = {};
+  let removed = 0;
+
+  for (const member of basePartyMembers()) {
+    const saved = vitals?.[member.id];
+    const before = saved?.erosion ?? 0;
+    const after = cleansedErosion(before, tuning);
+    removed += before - after;
+
+    next[member.id] = {
+      hp: saved?.hp ?? member.stats.maxHp,
+      mp: saved?.mp ?? member.stats.maxMp,
+      erosion: after,
+      ailments: saved?.ailments ?? [],
+    };
+  }
+
+  vitals = next;
+  return removed;
 }
 
 // ── 세이브 (T-037) ────────────────────────────────────────────────────────

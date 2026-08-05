@@ -17,7 +17,9 @@ import { blockedByOccupants, occupantInFront } from '../../core/world/interactio
 import { portalAt, type Portal } from '../../core/world/portal.js';
 import { zoneAt, type Zone } from '../../core/world/zone.js';
 import { remainingSites, siteAt, type RelicSite } from '../../core/world/site.js';
+import type { Facility } from '../../core/world/facility.js';
 import { sitesForMap } from '../../data/sites.js';
+import { CLEANSING, facilitiesForMap } from '../../data/facilities.js';
 import { relic } from '../../data/relics.js';
 import {
   advanceCounter,
@@ -26,6 +28,7 @@ import {
 } from '../../core/world/encounter.js';
 import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
 import {
+  cleanseParty,
   collectSite,
   collected,
   getInventory,
@@ -45,6 +48,7 @@ import {
   currentPage,
   isLastPage,
   openDialogue,
+  type DialogueScript,
   type DialogueSession,
 } from '../../core/dialogue/index.js';
 import { assetCatalog } from '../assets/catalog.js';
@@ -88,6 +92,7 @@ export class OverworldScene extends Phaser.Scene {
   private npcs: readonly Npc[] = [];
   private portals: readonly Portal[] = [];
   private zones: readonly Zone[] = [];
+  private facilities: readonly Facility[] = [];
   /** 아직 줍지 않은 회수 지점의 표식. 주우면 지운다. */
   private readonly siteViews = new Map<string, Phaser.GameObjects.Rectangle>();
 
@@ -126,6 +131,7 @@ export class OverworldScene extends Phaser.Scene {
     this.npcs = npcsForMap(this.mapId);
     this.portals = portalsForMap(this.mapId);
     this.zones = zonesForMap(this.mapId);
+    this.facilities = facilitiesForMap(this.mapId);
     this.stepping = false;
     this.leaving = false;
     this.dialogue = undefined;
@@ -143,6 +149,7 @@ export class OverworldScene extends Phaser.Scene {
       world.add(view);
     }
 
+    for (const facility of this.facilities) world.add(this.createFacilityView(facility));
     for (const npc of this.npcs) world.add(this.createNpcView(npc));
 
     this.walker = this.startingWalker();
@@ -205,7 +212,8 @@ export class OverworldScene extends Phaser.Scene {
       this.map,
       this.walker,
       direction,
-      blockedByOccupants(this.npcs),
+      // 시설도 NPC 처럼 길을 막는다 — 밟고 지나갈 수 있으면 마주 보는 조작이 성립하지 않는다.
+      blockedByOccupants([...this.npcs, ...this.facilities]),
     );
     this.walker = walker;
     markWalker(walker);
@@ -361,10 +369,50 @@ export class OverworldScene extends Phaser.Scene {
   // ── 대화 ────────────────────────────────────────────────────────────────
 
   private tryTalk(): void {
+    // 시설이 먼저다. 같은 칸에 둘 다 놓이지 않도록 검증이 막지만, 순서를 정해두면
+    // 나중에 검증이 느슨해져도 결과가 흔들리지 않는다.
+    const facility = occupantInFront(this.facilities, this.walker);
+    if (facility !== undefined) {
+      this.useFacility(facility);
+      return;
+    }
+
     const npc = occupantInFront(this.npcs, this.walker);
     if (npc === undefined) return;
 
-    const session = openDialogue(dialogueScript(npc.dialogueId), TEXT_BOX_LAYOUT);
+    this.openLines(dialogueScript(npc.dialogueId));
+  }
+
+  /**
+   * 시설을 쓴다 (T-040).
+   *
+   * 결과를 **대화로 알린다.** 침식 막대는 전투 화면에만 있어서, 거점에서 무엇이 달라졌는지
+   * 보여줄 다른 자리가 없다.
+   */
+  private useFacility(facility: Facility): void {
+    if (facility.kind !== 'cleansing') {
+      this.openLines({
+        id: `facility:${facility.id}`,
+        lines: [{ speaker: facility.name, text: '아직 아무도 없다.' }],
+      });
+      return;
+    }
+
+    const removed = cleanseParty(CLEANSING);
+    this.openLines({
+      id: `facility:${facility.id}`,
+      lines:
+        removed === 0
+          ? [{ speaker: facility.name, text: '씻어낼 것이 없다. 아직은 맑다.' }]
+          : [
+              { speaker: facility.name, text: `물이 탁해진다. 침식 ${removed} 이(가) 씻겨 나갔다.` },
+              { text: '완전히 지워지지는 않는다. 한 번 새겨진 것은 남는다.' },
+            ],
+    });
+  }
+
+  private openLines(script: DialogueScript): void {
+    const session = openDialogue(script, TEXT_BOX_LAYOUT);
     this.dialogue = session;
     this.textBox.show(currentPage(session), isLastPage(session));
     markDialogue(session);
@@ -496,6 +544,24 @@ export class OverworldScene extends Phaser.Scene {
     );
     marker.setStrokeStyle(1, 0x7fa6c9);
     return marker;
+  }
+
+  /** 시설 표식과 이름표. 이름이 없으면 무엇을 하는 자리인지 다가서기 전엔 알 수 없다. */
+  private createFacilityView(facility: Facility): Phaser.GameObjects.Container {
+    const size = this.map.tileWidth;
+    const x = facility.position.x * size + size / 2;
+    const y = facility.position.y * size + size / 2;
+
+    const marker = this.add.image(0, 0, 'tiles-dungeon', facility.tile);
+    const label = this.add
+      .text(0, size / 2 + 1, facility.name, {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#7fc98a',
+      })
+      .setOrigin(0.5, 0);
+
+    return this.add.container(x, y, [marker, label]);
   }
 
   private createNpcView(npc: Npc): Phaser.GameObjects.Image {

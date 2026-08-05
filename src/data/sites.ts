@@ -10,7 +10,7 @@ import type { MapId } from './maps.js';
  * 여기 놓인 유물은 시작 목록(`STARTING_RELICS`)에 없는 것들이다. 이미 지닌 것을 다시 주우면
  * 아무 일도 일어나지 않아 버그로 보인다.
  */
-export const SITES_BY_MAP: Readonly<Record<MapId, readonly RelicSite[]>> = {
+export const SITES_BY_MAP: Readonly<Partial<Record<MapId, readonly RelicSite[]>>> = {
   'ruin-entrance': [
     // 기둥 홀 한가운데. 야영지에서 나와야 닿는다.
     { id: 'pillar-cache', position: { x: 32, y: 8 }, relicId: 'bulwark-ring' },

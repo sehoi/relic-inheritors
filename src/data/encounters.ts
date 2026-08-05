@@ -111,7 +111,13 @@ export interface EncounterEntry {
   readonly mobCount: number;
 }
 
-export const ENCOUNTER_TABLES: Readonly<Record<MapId, readonly EncounterEntry[]>> = {
+/**
+ * 인카운터가 **없는 맵도 있다** — 거점이 그렇다. 그래서 `Partial` 이다.
+ *
+ * 빈 표를 넣어 두는 대신 없는 쪽을 택했다. 빈 표는 "전투가 있는데 편성이 비었다" 로도
+ * 읽히지만, 항목이 없는 것은 "여기서는 싸우지 않는다" 로만 읽힌다.
+ */
+export const ENCOUNTER_TABLES: Readonly<Partial<Record<MapId, readonly EncounterEntry[]>>> = {
   'ruin-entrance': [
     { weight: 6, mobCount: 2 },
     { weight: 3, mobCount: 1 },
@@ -150,7 +156,7 @@ export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 14, maxSteps: 32 };
  * **6·9 에서 내렸다.** 파티가 레벨 1에서 시작하게 되면서 기준점이 달라졌다.
  * 입구는 처음 유물을 만지는 곳이므로 조합을 실험할 여유가 있어야 한다.
  */
-export const AREA_LEVELS: Readonly<Record<MapId, number>> = {
+export const AREA_LEVELS: Readonly<Partial<Record<MapId, number>>> = {
   'ruin-entrance': 3,
   'ruin-depths': 5,
 };
@@ -162,10 +168,16 @@ export function rollEncounter(
   options: EncounterOptions = {},
 ): Encounter {
   const table = ENCOUNTER_TABLES[mapId];
+  const level = AREA_LEVELS[mapId];
+  if (table === undefined || level === undefined) {
+    // 안전지대 판정(`core/world/zone.ts`)이 먼저 걸러야 하는 상황이다. 여기까지 왔다면 배선이 틀렸다.
+    throw new RangeError(`"${mapId}" 에는 인카운터가 없습니다. 안전지대 판정을 지나쳤습니다.`);
+  }
+
   const entry = pickWeighted(
     table.map((row) => ({ weight: row.weight, value: row })),
     rng,
   );
 
-  return ruinEncounter(AREA_LEVELS[mapId], { ...options, mobCount: entry.mobCount });
+  return ruinEncounter(level, { ...options, mobCount: entry.mobCount });
 }
