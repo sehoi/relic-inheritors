@@ -36,19 +36,26 @@ function validSave(): Record<string, unknown> {
     worldRngState: 123_456,
     collectedSites: ['pillar-cache'],
     exp: 120,
+    coins: 40,
   };
 }
 
-/** v1 세이브 — 회수 지점도 경험치도 없던 시절. 실제 마이그레이션 두 단계의 입력이다. */
+/** v1 세이브 — 회수 지점도 경험치도 은편도 없던 시절. 마이그레이션 세 단계의 입력이다. */
 function v1Save(): Record<string, unknown> {
-  const { collectedSites: _sites, exp: _exp, ...rest } = validSave();
+  const { collectedSites: _sites, exp: _exp, coins: _coins, ...rest } = validSave();
   return { ...rest, version: 1 };
 }
 
-/** v2 세이브 — 회수 지점은 있고 경험치는 없던 시절. */
+/** v2 세이브 — 회수 지점은 있고 경험치·은편은 없던 시절. */
 function v2Save(): Record<string, unknown> {
-  const { exp: _drop, ...rest } = validSave();
+  const { exp: _exp, coins: _coins, ...rest } = validSave();
   return { ...rest, version: 2 };
+}
+
+/** v3 세이브 — 은편만 없던 시절. */
+function v3Save(): Record<string, unknown> {
+  const { coins: _drop, ...rest } = validSave();
+  return { ...rest, version: 3 };
 }
 
 describe('parseSave', () => {
@@ -207,12 +214,13 @@ describe('migrateSave', () => {
 });
 
 describe('실제 마이그레이션', () => {
-  it('v1 세이브가 두 단계를 거쳐 올라온다', () => {
-    // v1 → v2(회수 지점) → v3(경험치). 한 단계라도 빠지면 여기서 걸린다.
+  it('v1 세이브가 모든 단계를 거쳐 올라온다', () => {
+    // v1 → v2(회수 지점) → v3(경험치) → v4(은편). 한 단계라도 빠지면 여기서 걸린다.
     const save = parseSave(v1Save());
     expect(save.version).toBe(SAVE_VERSION);
     expect(save.collectedSites).toEqual([]);
     expect(save.exp).toBeGreaterThan(0);
+    expect(save.coins).toBe(0);
   });
 
   it('올라오는 동안 나머지 값은 손대지 않는다', () => {
@@ -241,8 +249,16 @@ describe('실제 마이그레이션', () => {
     expect(parseSave(v2Save()).collectedSites).toEqual(['pillar-cache']);
   });
 
+  it('v3 → v4 · 은편은 0에서 시작한다', () => {
+    // 경험치와 달리 넉넉히 줄 이유가 없다 — 은편은 전투로 벌면 되므로
+    // 없다고 해서 막다른 길이 되지 않는다. (레벨이 떨어지면 못 이기는 전투에 갇힌다.)
+    expect(parseSave(v3Save()).coins).toBe(0);
+    expect(parseSave(v3Save()).exp).toBe(120);
+  });
+
   it('최신 세이브는 손대지 않는다', () => {
     expect(parseSave(validSave()).exp).toBe(120);
+    expect(parseSave(validSave()).coins).toBe(40);
     expect(parseSave(validSave()).collectedSites).toEqual(['pillar-cache']);
   });
 });

@@ -88,6 +88,41 @@ export function worldRandom(): Rng {
 
 /** 파티 누적 경험치. **레벨은 여기서 파생된다** — 둘 다 저장하면 언젠가 어긋난다. */
 let partyExp = 0;
+/** 은편. 여관·상점이 쓴다 (T-041a). */
+let coins = 0;
+
+export function coinCount(): number {
+  return coins;
+}
+
+export function gainCoins(amount: number): void {
+  if (amount > 0) coins += Math.floor(amount);
+}
+
+/**
+ * 여관에서 쉰다. 실제로 쓴 은편을 돌려주고, 못 쉬면 `undefined`.
+ *
+ * **HP·MP 만 되돌린다. 침식은 정화소의 몫이다** — 한 자리에서 모든 것이 해결되면
+ * 다른 자리에 갈 이유가 없어진다.
+ */
+export function restAtInn(price: number): number | undefined {
+  if (price > coins) return undefined;
+
+  const next: Record<ActorId, Vitals> = {};
+  for (const member of basePartyMembers()) {
+    const saved = vitals?.[member.id];
+    next[member.id] = {
+      hp: member.stats.maxHp,
+      mp: member.stats.maxMp,
+      erosion: saved?.erosion ?? 0,
+      ailments: [],
+    };
+  }
+
+  vitals = next;
+  coins -= price;
+  return price;
+}
 
 export function partyLevel(): number {
   return levelOf(partyExp, LEVEL_CURVE);
@@ -292,6 +327,8 @@ export interface VictoryOutcome {
   readonly levelledTo: number | undefined;
   /** 돌아온 MP. 0이면 아무도 회복하지 않았다. */
   readonly mpRecovered: number;
+  /** 얻은 은편. */
+  readonly coinsGained: number;
 }
 
 /**
@@ -308,6 +345,7 @@ export function settleVictory(
   defeatedEnemies: number,
   expGained: number,
   recovery: { readonly mpPerEnemy: number },
+  coinsGained = 0,
 ): VictoryOutcome {
   const back = Math.max(0, recovery.mpPerEnemy * defeatedEnemies);
   let mpRecovered = 0;
@@ -324,11 +362,13 @@ export function settleVictory(
   saveInventory(inventory);
   recordSkillUses(skillUses);
 
+  gainCoins(coinsGained);
+
   const levelledTo = gainExp(expGained);
   // 레벨업은 완전 회복을 겸한다. 회복된 상태를 다시 저장해야 전투 밖으로 이어진다.
   if (levelledTo !== undefined) saveParty(partyForBattle());
 
-  return { levelledTo, mpRecovered };
+  return { levelledTo, mpRecovered, coinsGained: Math.max(0, Math.floor(coinsGained)) };
 }
 
 /** 전투가 끝난 뒤 파티 쪽 상태만 되가져온다. 스탯은 저장하지 않는다 — 매번 다시 계산한다. */
@@ -364,6 +404,7 @@ export function resetParty(): void {
   owned = STARTING_RELICS;
   collectedSites = new Set();
   partyExp = 0;
+  coins = 0;
 }
 
 /**
@@ -437,6 +478,7 @@ export function captureSave(
     worldRngState: worldRandom().getState(),
     collectedSites: [...collectedSites].sort(),
     exp: partyExp,
+    coins,
   };
 }
 
@@ -455,6 +497,7 @@ export function restoreSave(save: SaveData): void {
   collectedSites = new Set(save.collectedSites);
   // 경험치를 먼저 넣는다 — 아래에서 vitals 를 채울 때 최대치가 레벨에 달려 있다.
   partyExp = save.exp;
+  coins = save.coins;
 
   const next: Record<ActorId, Vitals> = {};
   for (const [actorId, saved] of Object.entries(save.party)) {

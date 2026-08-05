@@ -35,7 +35,7 @@ import {
  * `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다 — 조용히 통과시키면
  * 필드가 `undefined` 인 채로 게임이 돌아가다 한참 뒤에 이상해진다.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SavedAilment {
   readonly kind: Ailment;
@@ -89,6 +89,8 @@ export interface SaveData {
    * 어긋난 세이브는 어느 쪽이 옳은지 알 수 없다.
    */
   readonly exp: number;
+  /** 은편 (v4, T-041a). */
+  readonly coins: number;
 }
 
 // ── 마이그레이션 ──────────────────────────────────────────────────────────
@@ -123,6 +125,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 덜 주면 옛 세이브가 못 이기는 전투에 갇히지만, 더 주는 것은 앞당겨질 뿐이다.
    */
   2: (data) => ({ ...data, exp: LEGACY_EXP }),
+
+  /**
+   * v3 → v4 · 은편 (T-041a).
+   *
+   * 그전에는 통화가 없었으므로 **0으로 시작한다.** 여기서 넉넉히 주고 싶은 유혹이 있지만,
+   * 은편은 전투로 벌면 되는 것이라 없다고 해서 막다른 길이 되지 않는다.
+   * (경험치는 달랐다 — 레벨이 떨어지면 못 이기는 전투에 갇힌다.)
+   */
+  3: (data) => ({ ...data, coins: 0 }),
 };
 
 /**
@@ -297,6 +308,7 @@ export function parseSave(
   }
 
   const exp = readInt(data['exp'], 'exp', problems, { min: 0 });
+  const coins = readInt(data['coins'], 'coins', problems, { min: 0 });
 
   const collectedSites: string[] = [];
   const collectedRaw = readArray(data['collectedSites'], 'collectedSites', problems);
@@ -331,6 +343,7 @@ export function parseSave(
     worldRngState: worldRngState as number,
     collectedSites,
     exp: exp as number,
+    coins: coins as number,
   };
 }
 

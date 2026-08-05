@@ -48,6 +48,7 @@ function sample(): SaveData {
     worldRngState: 999,
     collectedSites: ['pillar-cache'],
     exp: 120,
+    coins: 40,
   };
 }
 
