@@ -7,12 +7,15 @@ import { createRng, type Rng } from '../../src/core/rng/index.js';
 import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../src/data/battle.js';
 import { rollEncounter } from '../../src/data/encounters.js';
 import type { MapId } from '../../src/data/maps.js';
-import { EXP_REWARD, LEVEL_CURVE } from '../../src/data/progression.js';
-import { CLEANSING } from '../../src/data/facilities.js';
+import { COIN_REWARD, EXP_REWARD, LEVEL_CURVE } from '../../src/data/progression.js';
+import { innPrice } from '../../src/core/world/facility.js';
+import { CLEANSING, INN } from '../../src/data/facilities.js';
 import {
   cleanseParty,
   gainExp,
   getInventory,
+  partyLevel,
+  restAtInn,
   partyForBattle,
   partyProgress,
   partySkills,
@@ -70,6 +73,7 @@ function fight(mapId: MapId, worldRng: Rng, seed: number): boolean {
     defeated,
     defeated * expForEnemy(encounter.level, EXP_REWARD),
     VICTORY_RECOVERY,
+    defeated * expForEnemy(encounter.level, COIN_REWARD),
   );
   return true;
 }
@@ -83,6 +87,8 @@ interface Run {
   readonly skillReadyRate: number;
   /** 침식으로 유물이 봉인된 파티원이 있는 채로 시작한 전투의 비율. */
   readonly sealedRate: number;
+  /** 거점에 들렀을 때 실제로 잘 수 있었던 비율. 들르지 않았으면 1. */
+  readonly affordableRest: number;
 }
 
 /** 지금 스킬을 하나라도 쓸 수 있는 파티원 수. MP 가 마르면 0이 된다. */
@@ -99,12 +105,23 @@ function readyCount(): number {
  * 왕복 걸음 수는 세지 않는다 — 거점으로 가는 길은 안전지대를 지나므로 전투가 끼어들지 않고,
  * 이 측정이 답하려는 것은 "정화가 소모전을 바꾸는가" 이지 "왕복이 얼마나 귀찮은가" 가 아니다.
  */
-function runAttrition(mapId: MapId, startLevel: number, cleanseEvery = 0): Run {
+interface Visits {
+  /** 몇 판마다 거점에 들르는가. 0이면 들르지 않는다. */
+  readonly every?: number;
+  /** 들렀을 때 여관에서 자는가. */
+  readonly rest?: boolean;
+}
+
+function runAttrition(mapId: MapId, startLevel: number, visits: Visits = {}): Run {
   const survived: number[] = [];
   const reached: number[] = [];
   let battlesSeen = 0;
   let readyBattles = 0;
   let sealedBattles = 0;
+  let stops = 0;
+  let rests = 0;
+
+  const every = visits.every ?? 0;
 
   for (let trial = 0; trial < ATTRITION.trials; trial += 1) {
     resetParty();
@@ -113,8 +130,12 @@ function runAttrition(mapId: MapId, startLevel: number, cleanseEvery = 0): Run {
     const worldRng = createRng(90_000 + trial);
     let count = 0;
     for (let battle = 0; battle < ATTRITION.battles; battle += 1) {
-      if (cleanseEvery > 0 && battle > 0 && battle % cleanseEvery === 0) {
+      if (every > 0 && battle > 0 && battle % every === 0) {
         cleanseParty(CLEANSING);
+        if (visits.rest === true) {
+          stops += 1;
+          if (restAtInn(innPrice(partyLevel(), INN)) !== undefined) rests += 1;
+        }
       }
 
       battlesSeen += 1;
@@ -137,6 +158,7 @@ function runAttrition(mapId: MapId, startLevel: number, cleanseEvery = 0): Run {
     avgLevel: mean(reached),
     skillReadyRate: battlesSeen === 0 ? 0 : readyBattles / battlesSeen,
     sealedRate: battlesSeen === 0 ? 0 : sealedBattles / battlesSeen,
+    affordableRest: stops === 0 ? 1 : rests / stops,
   };
 }
 
@@ -213,16 +235,41 @@ describe('침식이 주 자원이다', () => {
 
   it('거점에 들르면 눈에 띄게 줄어든다', () => {
     // 그러지 않으면 거점까지 걸어올 이유가 없고, 거점이 없는 것과 같아진다.
-    const cleansed = runAttrition(
-      'ruin-depths',
-      ATTRITION.depthsPreparedLevel,
-      ATTRITION.cleanseEvery,
-    );
+    const cleansed = runAttrition('ruin-depths', ATTRITION.depthsPreparedLevel, {
+      every: ATTRITION.cleanseEvery,
+    });
 
     expect(
       cleansed.sealedRate,
       `정화 없음: ${describeRun(bare)}\n  ${ATTRITION.cleanseEvery}판마다: ${describeRun(cleansed)}`,
     ).toBeLessThanOrEqual(bare.sealedRate * ATTRITION.cleansedSealedRatio);
+  });
+});
+
+/**
+ * 거점이 소모전의 답인가 (T-041a).
+ *
+ * 소모전 불변식이 "준비 없이 내려가면 위험하다" 를 지킨다면, 이쪽은 **"준비하면 넘을 수 있다"**
+ * 를 지킨다. 둘 중 하나만 있으면 게임은 막다른 길이거나 산책이 된다.
+ */
+describe('거점이 소모전의 답이다', () => {
+  const rested = runAttrition('ruin-depths', ATTRITION.depthsUnpreparedLevel, {
+    every: ATTRITION.cleanseEvery,
+    rest: true,
+  });
+
+  it('정화하고 자고 나오면 전멸을 피한다', () => {
+    // 준비 없이 내려가면 33% 가 전멸하는 레벨이다 (`소모전 불변식` 참조).
+    expect(rested.wipeRate, describeRun(rested)).toBeLessThanOrEqual(ATTRITION.maxRestedWipe);
+  });
+
+  it('벌이가 숙박비를 감당한다', () => {
+    // 잘 돈이 없으면 그건 난이도가 아니라 막다른 길이다 —
+    // 회복하려면 싸워야 하고 싸우려면 회복해야 하는 상태에 갇힌다.
+    expect(
+      rested.affordableRest,
+      `${(rested.affordableRest * 100).toFixed(0)}% 만 잘 수 있었다`,
+    ).toBeGreaterThanOrEqual(ATTRITION.minAffordableRest);
   });
 });
 

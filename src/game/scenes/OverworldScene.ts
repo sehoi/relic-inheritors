@@ -17,9 +17,9 @@ import { blockedByOccupants, occupantInFront } from '../../core/world/interactio
 import { portalAt, type Portal } from '../../core/world/portal.js';
 import { zoneAt, type Zone } from '../../core/world/zone.js';
 import { remainingSites, siteAt, type RelicSite } from '../../core/world/site.js';
-import type { Facility } from '../../core/world/facility.js';
+import { innPrice, type Facility } from '../../core/world/facility.js';
 import { sitesForMap } from '../../data/sites.js';
-import { CLEANSING, facilitiesForMap } from '../../data/facilities.js';
+import { CLEANSING, INN, facilitiesForMap } from '../../data/facilities.js';
 import { relic } from '../../data/relics.js';
 import {
   advanceCounter,
@@ -29,12 +29,14 @@ import {
 import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
 import {
   cleanseParty,
+  coinCount,
   collectSite,
   collected,
   getInventory,
   partyForBattle,
   partyLevel,
   partySkills,
+  restAtInn,
   worldRandom,
 } from '../partyStore.js';
 import { encountersEnabled } from '../devFlags.js';
@@ -390,6 +392,10 @@ export class OverworldScene extends Phaser.Scene {
    * 보여줄 다른 자리가 없다.
    */
   private useFacility(facility: Facility): void {
+    if (facility.kind === 'inn') {
+      this.useInn(facility);
+      return;
+    }
     if (facility.kind !== 'cleansing') {
       this.openLines({
         id: `facility:${facility.id}`,
@@ -407,6 +413,41 @@ export class OverworldScene extends Phaser.Scene {
           : [
               { speaker: facility.name, text: `물이 탁해진다. 침식 ${removed} 이(가) 씻겨 나갔다.` },
               { text: '완전히 지워지지는 않는다. 한 번 새겨진 것은 남는다.' },
+            ],
+    });
+  }
+
+  /**
+   * 여관에서 쉰다 (T-041a).
+   *
+   * **묻지 않고 바로 쉰다.** 여기까지 걸어와 마주 보고 누른 것이 곧 의사표시다.
+   * 예/아니오 창을 띄우려면 대화 시스템에 선택지가 있어야 하는데, 그건 별도 태스크다 —
+   * 다만 값을 먼저 알려주지 않고 쓰는 것은 불친절하므로 백로그에 남겼다.
+   */
+  private useInn(facility: Facility): void {
+    const price = innPrice(partyLevel(), INN);
+    const party = partyForBattle();
+    const rested = party.every((m) => m.hp === m.stats.maxHp && m.mp === m.stats.maxMp);
+
+    if (rested) {
+      this.openLines({
+        id: `facility:${facility.id}`,
+        lines: [{ speaker: facility.name, text: '더 쉴 필요는 없어 보인다.' }],
+      });
+      return;
+    }
+
+    const spent = restAtInn(price);
+    this.openLines({
+      id: `facility:${facility.id}`,
+      lines:
+        spent === undefined
+          ? [
+              { speaker: facility.name, text: `하룻밤에 은편 ${price}. 지금은 ${coinCount()} 뿐이다.` },
+            ]
+          : [
+              { speaker: facility.name, text: `은편 ${spent} 을(를) 치르고 눈을 붙였다.` },
+              { text: '몸은 나아졌지만, 새겨진 것은 그대로다.' },
             ],
     });
   }

@@ -1,4 +1,4 @@
-import type { CleansingTuning, Facility } from '../core/world/facility.js';
+import type { CleansingTuning, Facility, InnTuning } from '../core/world/facility.js';
 import { item } from './items.js';
 import type { MapId } from './maps.js';
 
@@ -17,6 +17,14 @@ export const FACILITIES_BY_MAP: Readonly<Partial<Record<MapId, readonly Facility
       name: '정화소',
       // `tiles-dungeon` 64번 — 돌기둥처럼 생긴 칸. 계단 표식과 헷갈리지 않는다.
       tile: 64,
+    },
+    {
+      id: 'inn-hearth',
+      position: { x: 28, y: 8 },
+      kind: 'inn',
+      name: '여관',
+      // 70번 — 나무 가구. 쉬어가는 자리로 읽힌다.
+      tile: 70,
     },
   ],
 };
@@ -51,3 +59,17 @@ function stoneCleanse(): number {
   const effect = item('cleansing-stone').effect;
   return effect.kind === 'cleanse' ? effect.erosion : 0;
 }
+
+/**
+ * 여관 값 (T-041a).
+ *
+ * **HP·MP 를 완전히 되돌리되 침식은 건드리지 않는다.** 침식은 정화소의 몫이다 —
+ * 한 자리에서 모든 것이 해결되면 다른 자리에 갈 이유가 없어진다.
+ *
+ * 레벨당 3은 잡몹 대여섯 마리쯤이다. 공짜로 느껴지지 않으면서, 한 번 들어갔다 나오면
+ * 다시 쉴 수 있을 정도로 잡았다 — 돈이 모자라 유적에 못 들어가는 상태는 막다른 길이다.
+ */
+export const INN: InnTuning = {
+  base: 4,
+  perLevel: 3,
+};

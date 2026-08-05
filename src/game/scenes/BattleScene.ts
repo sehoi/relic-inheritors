@@ -31,7 +31,7 @@ import {
   settleVictory,
 } from '../partyStore.js';
 import { expForEnemy } from '../../core/progress/level.js';
-import { EXP_REWARD } from '../../data/progression.js';
+import { COIN_REWARD, EXP_REWARD } from '../../data/progression.js';
 import { Gauge } from '../ui/Gauge.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -392,6 +392,7 @@ export class BattleScene extends Phaser.Scene {
       (actor) => actor.side === 'enemy' && !isAlive(actor),
     ).length;
     const gained = defeated * expForEnemy(this.encounter.level, EXP_REWARD);
+    const coins = defeated * expForEnemy(this.encounter.level, COIN_REWARD);
 
     const result = settleVictory(
       this.state.actors,
@@ -400,9 +401,11 @@ export class BattleScene extends Phaser.Scene {
       defeated,
       gained,
       VICTORY_RECOVERY,
+      coins,
     );
 
     const parts = [`승리!  경험치 +${gained}`];
+    if (result.coinsGained > 0) parts.push(`은편 +${result.coinsGained}`);
     if (result.mpRecovered > 0) parts.push(`MP +${result.mpRecovered}`);
     if (result.levelledTo !== undefined) {
       parts.push(`레벨 ${result.levelledTo}!  기운을 되찾았다`);

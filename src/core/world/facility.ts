@@ -50,6 +50,21 @@ export function cleansedErosion(erosion: number, tuning: CleansingTuning): numbe
   return Math.max(0, erosion - removed);
 }
 
+/**
+ * 여관 (GDD §6.4).
+ *
+ * **값이 파티 레벨을 따라 오른다.** 고정가로 두면 초반에는 감당이 안 되고 후반에는
+ * 무료나 다름없어진다 — 어느 쪽이든 "쉬고 갈까" 라는 판단이 사라진다.
+ */
+export interface InnTuning {
+  readonly base: number;
+  readonly perLevel: number;
+}
+
+export function innPrice(partyLevel: number, tuning: InnTuning): number {
+  return Math.max(1, Math.round(tuning.base + tuning.perLevel * Math.max(1, partyLevel)));
+}
+
 export interface FacilitySurroundings {
   /** 이 칸들 위에는 놓을 수 없다 — 계단이나 NPC 와 겹치면 무엇이 발동할지 모호해진다. */
   readonly occupied: readonly { readonly x: number; readonly y: number }[];
