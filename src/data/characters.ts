@@ -59,6 +59,8 @@ export type PortraitId = keyof typeof PORTRAITS;
 export const PARTY_PORTRAITS: Readonly<Record<ActorId, number>> = {
   vanguard: PORTRAITS.armored,
   caster: PORTRAITS.robed,
+  warden: PORTRAITS.bearded,
+  seeker: PORTRAITS.teal,
 };
 
 /** 탐색 화면의 주인공. 파티를 이끄는 전위다. */

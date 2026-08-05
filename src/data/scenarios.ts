@@ -23,9 +23,16 @@ import {
 /**
  * 표준 잡몹전의 적 수.
  *
- * **실제로 가장 자주 나오는 편성이어야 한다** (`ENCOUNTER_TABLES` 의 최대 가중치 = 2마리).
- * 예전 값 3은 파티가 4인이던 시절의 것이고, 실제 게임에서는 드문 조우다 —
- * 드문 편성으로 "표준" 전투 길이를 재고 있었던 셈이다.
+ * **실제로 가장 자주 나오는 편성이어야 한다** (`ENCOUNTER_TABLES` 의 최대 가중치).
+ * 드문 편성으로 재면 "표준" 전투 길이가 표준이 아닌 것을 가리킨다.
+ *
+ * 두 맵 모두 최대 가중치가 2마리다 (`ENCOUNTER_TABLES`).
+ *
+ * ⚠️ **조합 훑기는 이 수를 쓰지 않는다** (`BUILD_SWEEP.mobCount`). 훑기에는 승률이 갈리는
+ * 편성이 필요한데 실제 조우는 그렇지 않다 — 4인 파티에게 2~3마리는 적 Lv46 까지 올려도
+ * 전 조합 승률 100% 다. 훑기는 이미 적 레벨도 게임에 없는 값(37)을 쓴다.
+ * **측정 지점은 인위적이어도 되지만 "표준 전투" 는 그러면 안 된다** —
+ * 이쪽은 게임이 실제로 무엇인지를 가리키는 자리다.
  */
 const MOB_COUNT = 2;
 
@@ -141,6 +148,8 @@ export interface RelicFightOptions {
    * 전부 이기거나 전부 지는 구간에서는 조합의 차이가 승률에 나타나지 않아, 측정 자체가 성립하지 않는다.
    */
   readonly enemyLevel?: number;
+  /** 적 수. 생략하면 표준 편성(`MOB_COUNT`). 조합 훑기가 여기를 따로 잡는다. */
+  readonly mobCount?: number;
 }
 
 /**
@@ -170,7 +179,7 @@ export function relicFight(
             affinity: { fire: 0.75 },
           }),
         ]
-      : Array.from({ length: MOB_COUNT }, (_, i) =>
+      : Array.from({ length: options.mobCount ?? MOB_COUNT }, (_, i) =>
           makeCombatant(`mob-${i + 1}`, 'enemy', statsAtLevel(MOB_CURVES, enemyLevel)),
         );
 

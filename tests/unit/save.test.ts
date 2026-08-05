@@ -37,24 +37,37 @@ function validSave(): Record<string, unknown> {
     collectedSites: ['pillar-cache'],
     exp: 120,
     coins: 40,
+    joined: ['vanguard', 'caster'],
   };
+}
+
+/** v4 세이브 — 구성원 목록만 없던 시절. */
+function v4Save(): Record<string, unknown> {
+  const { joined: _drop, ...rest } = validSave();
+  return { ...rest, version: 4 };
 }
 
 /** v1 세이브 — 회수 지점도 경험치도 은편도 없던 시절. 마이그레이션 세 단계의 입력이다. */
 function v1Save(): Record<string, unknown> {
-  const { collectedSites: _sites, exp: _exp, coins: _coins, ...rest } = validSave();
+  const {
+    collectedSites: _sites,
+    exp: _exp,
+    coins: _coins,
+    joined: _joined,
+    ...rest
+  } = validSave();
   return { ...rest, version: 1 };
 }
 
 /** v2 세이브 — 회수 지점은 있고 경험치·은편은 없던 시절. */
 function v2Save(): Record<string, unknown> {
-  const { exp: _exp, coins: _coins, ...rest } = validSave();
+  const { exp: _exp, coins: _coins, joined: _joined, ...rest } = validSave();
   return { ...rest, version: 2 };
 }
 
-/** v3 세이브 — 은편만 없던 시절. */
+/** v3 세이브 — 은편과 구성원 목록이 없던 시절. */
 function v3Save(): Record<string, unknown> {
-  const { coins: _drop, ...rest } = validSave();
+  const { coins: _coins, joined: _joined, ...rest } = validSave();
   return { ...rest, version: 3 };
 }
 
@@ -254,6 +267,12 @@ describe('실제 마이그레이션', () => {
     // 없다고 해서 막다른 길이 되지 않는다. (레벨이 떨어지면 못 이기는 전투에 갇힌다.)
     expect(parseSave(v3Save()).coins).toBe(0);
     expect(parseSave(v3Save()).exp).toBe(120);
+  });
+
+  it('v4 → v5 · 이미 만난 동료를 잃지 않는다', () => {
+    // 빈 목록으로 두면 복원할 때 처음 인원으로 되돌아가 동료가 사라진다.
+    // `party` 에 이미 누가 있는지가 정보로 남아 있으므로 그걸 쓴다.
+    expect([...parseSave(v4Save()).joined].sort()).toEqual(['caster', 'vanguard']);
   });
 
   it('최신 세이브는 손대지 않는다', () => {

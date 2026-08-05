@@ -33,6 +33,7 @@ import {
   collectSite,
   collected,
   getInventory,
+  joinMember,
   partyForBattle,
   partyLevel,
   partySkills,
@@ -383,7 +384,15 @@ export class OverworldScene extends Phaser.Scene {
     const npc = occupantInFront(this.npcs, this.walker);
     if (npc === undefined) return;
 
-    this.openLines(dialogueScript(npc.dialogueId));
+    // 합류는 말을 거는 순간 일어난다 (T-049b). 이미 함께면 다른 대사를 쓴다 —
+    // 합류 전 대사를 계속 쓰면 이미 들어온 사람이 또 청한다.
+    if (npc.joinsAs !== undefined && joinMember(npc.joinsAs)) {
+      this.openLines(dialogueScript(npc.dialogueId));
+      return;
+    }
+
+    const script = npc.joinsAs !== undefined ? (npc.joinedDialogueId ?? npc.dialogueId) : npc.dialogueId;
+    this.openLines(dialogueScript(script));
   }
 
   /**

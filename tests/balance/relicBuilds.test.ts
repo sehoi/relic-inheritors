@@ -57,7 +57,11 @@ function scoreBuilds(catalog: Readonly<Record<string, Relic>>): readonly Scored[
       relicFight(
         BUILD_SWEEP.partyLevel,
         build.relics.map((id) => catalog[id] as Relic),
-        { opponent: BUILD_SWEEP.opponent, enemyLevel: BUILD_SWEEP.enemyLevel },
+        {
+          opponent: BUILD_SWEEP.opponent,
+          enemyLevel: BUILD_SWEEP.enemyLevel,
+          mobCount: BUILD_SWEEP.mobCount,
+        },
       ),
     seeds,
     BATTLE_TUNING,
@@ -140,6 +144,7 @@ describe('기구 검사 · 불변식에 이빨이 있는가', () => {
             relicFight(BUILD_SWEEP.partyLevel, build.relics.map(relic), {
               opponent: BUILD_SWEEP.opponent,
               enemyLevel: BUILD_SWEEP.enemyLevel,
+              mobCount: BUILD_SWEEP.mobCount,
             }),
           seedRange(1, 60),
           BATTLE_TUNING,
