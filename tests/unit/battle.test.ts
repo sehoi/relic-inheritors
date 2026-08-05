@@ -34,6 +34,13 @@ const TUNING: BattleTuning = {
   damage: FLAT_DAMAGE,
   flee: { baseChance: 0.5, agiFactor: 0.02, minChance: 0.1, maxChance: 0.95 },
   erosion: { threshold: 100, reliefRatio: 0.5, max: 200 },
+  // 상태이상 확률은 0으로 둔다. 전투 흐름을 볼 때 무작위 개입이 섞이면 검사가 어렵다.
+  ailment: {
+    poisonPercent: 0.06,
+    paralysisSkipChance: 0,
+    confusionChance: 0,
+    defaultTurns: { poison: 5, paralysis: 3, sleep: 4, silence: 3, confusion: 3 },
+  },
 };
 
 const NO_JITTER: BattleTuning = { ...TUNING, turnOrder: { jitter: 0 } };
@@ -412,6 +419,144 @@ describe('폭주 (침식 한계)', () => {
     const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
     expect(events).toContainEqual({ type: 'turnEnd', actor: 'hero' });
     expect(next.queue[0]).not.toBe('hero');
+  });
+});
+
+describe('상태이상과 커맨드', () => {
+  const venom: Skill = {
+    id: 'venom',
+    name: '독니',
+    mpCost: 2,
+    erosion: 5,
+    attack: { power: 100, element: 'none', kind: 'physical' },
+    inflict: { kind: 'poison', chance: 1, turns: 3 },
+  };
+
+  const pair = (extra: Partial<BattleActor> = {}): BattleActor[] => [
+    { ...actor('hero', 'party', 30), ...extra },
+    actor('slime', 'enemy', 20),
+  ];
+
+  it('수면은 턴을 잃게 하고 ailmentBlocked 를 낸다', () => {
+    const asleep = pair({ ailments: [{ kind: 'sleep', turns: 4 }] });
+    const state = createBattle(asleep, 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'attack', actor: 'hero', target: 'slime' },
+      NO_JITTER,
+    );
+
+    expect(events).toContainEqual({ type: 'ailmentBlocked', actor: 'hero', kind: 'sleep' });
+    expect(actorById(next, 'slime').hp).toBe(100);
+  });
+
+  it('피격하면 수면이 풀린다 (자는 상대를 굳히는 전략을 막는다)', () => {
+    const asleep = [
+      actor('hero', 'party', 30),
+      { ...actor('slime', 'enemy', 20), ailments: [{ kind: 'sleep' as const, turns: 4 }] },
+    ];
+    const state = createBattle(asleep, 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'attack', actor: 'hero', target: 'slime' },
+      NO_JITTER,
+    );
+
+    expect(events).toContainEqual({ type: 'ailmentEnded', actor: 'slime', kind: 'sleep' });
+    expect(actorById(next, 'slime').ailments).toEqual([]);
+  });
+
+  it('침묵은 스킬만 막고 기본 공격은 통과시킨다', () => {
+    const silenced = pair({ ailments: [{ kind: 'silence', turns: 3 }] });
+    const state = createBattle(silenced, 1, NO_JITTER);
+
+    expect(() =>
+      step(state, { type: 'skill', actor: 'hero', target: 'slime', skill: venom }, NO_JITTER),
+    ).toThrow(/침묵/);
+
+    const { state: next } = step(
+      state,
+      { type: 'attack', actor: 'hero', target: 'slime' },
+      NO_JITTER,
+    );
+    expect(actorById(next, 'slime').hp).toBeLessThan(100);
+  });
+
+  it('혼란은 대상을 무작위로 바꾸고 confused 이벤트를 낸다', () => {
+    const chaos: BattleTuning = { ...NO_JITTER, ailment: { ...NO_JITTER.ailment, confusionChance: 1 } };
+    const party = [
+      { ...actor('hero', 'party', 30), ailments: [{ kind: 'confusion' as const, turns: 3 }] },
+      actor('ally', 'party', 25),
+      actor('slime', 'enemy', 20),
+    ];
+    const state = createBattle(party, 1, chaos);
+    const { events } = step(state, { type: 'attack', actor: 'hero', target: 'slime' }, chaos);
+
+    expect(events.some((e) => e.type === 'confused')).toBe(true);
+  });
+
+  it('독은 턴 종료마다 깎고 지속 턴이 줄어든다', () => {
+    const poisoned = pair({ ailments: [{ kind: 'poison', turns: 2 }] });
+    const state = createBattle(poisoned, 1, NO_JITTER);
+    const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+
+    // maxHp 100 * 0.06 = 6
+    expect(events).toContainEqual({
+      type: 'ailmentDamage',
+      actor: 'hero',
+      kind: 'poison',
+      amount: 6,
+    });
+    expect(actorById(next, 'hero').hp).toBe(94);
+    expect(actorById(next, 'hero').ailments).toEqual([{ kind: 'poison', turns: 1 }]);
+  });
+
+  it('지속 턴이 끝나면 ailmentEnded 를 낸다', () => {
+    const poisoned = pair({ ailments: [{ kind: 'poison', turns: 1 }] });
+    const state = createBattle(poisoned, 1, NO_JITTER);
+    const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+
+    expect(events).toContainEqual({ type: 'ailmentEnded', actor: 'hero', kind: 'poison' });
+    expect(actorById(next, 'hero').ailments).toEqual([]);
+  });
+
+  it('스킬이 상태이상을 건다', () => {
+    const state = createBattle(pair(), 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'skill', actor: 'hero', target: 'slime', skill: venom },
+      NO_JITTER,
+    );
+
+    expect(events).toContainEqual({
+      type: 'ailmentApplied',
+      actor: 'slime',
+      kind: 'poison',
+      turns: 3,
+    });
+    expect(actorById(next, 'slime').ailments).toEqual([{ kind: 'poison', turns: 3 }]);
+  });
+
+  it('쓰러진 대상에게는 상태이상을 걸지 않는다', () => {
+    const dying = [actor('hero', 'party', 30), actor('slime', 'enemy', 20, 1)];
+    const state = createBattle(dying, 1, NO_JITTER);
+    const { events } = step(
+      state,
+      { type: 'skill', actor: 'hero', target: 'slime', skill: venom },
+      NO_JITTER,
+    );
+
+    expect(events).toContainEqual({ type: 'death', actor: 'slime' });
+    expect(events.some((e) => e.type === 'ailmentApplied')).toBe(false);
+  });
+
+  it('폭주가 상태이상보다 우선한다', () => {
+    const wild = pair({ erosion: 120, ailments: [{ kind: 'sleep', turns: 4 }] });
+    const state = createBattle(wild, 1, NO_JITTER);
+    const { events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+
+    expect(events).toContainEqual({ type: 'overload', actor: 'hero' });
+    expect(events.some((e) => e.type === 'ailmentBlocked')).toBe(false);
   });
 });
 
