@@ -287,6 +287,50 @@ export function recordSkillUses(uses: Readonly<Record<string, number>>): void {
   attunement = gainAll(attunement, byRelic, ATTUNEMENT);
 }
 
+export interface VictoryOutcome {
+  /** 레벨이 올랐으면 오른 레벨. 안 올랐으면 undefined. */
+  readonly levelledTo: number | undefined;
+  /** 돌아온 MP. 0이면 아무도 회복하지 않았다. */
+  readonly mpRecovered: number;
+}
+
+/**
+ * **이겼을 때 일어나는 일 전부** (T-046).
+ *
+ * 저장·숙련도·MP 회복·경험치를 한 함수에 모은 이유는, 흩어져 있으면 **화면과 시뮬레이터가
+ * 서로 다른 순서로 부르게 되기 때문이다.** 실제로 T-044 에서 시뮬레이터가 4인 파티를 재는 동안
+ * 게임은 2인이었던 일이 있었다. 밸런스 측정이 게임과 같은 것을 재려면 같은 길을 지나야 한다.
+ */
+export function settleVictory(
+  actors: readonly BattleActor[],
+  inventory: Inventory,
+  skillUses: Readonly<Record<string, number>>,
+  defeatedEnemies: number,
+  expGained: number,
+  recovery: { readonly mpPerEnemy: number },
+): VictoryOutcome {
+  const back = Math.max(0, recovery.mpPerEnemy * defeatedEnemies);
+  let mpRecovered = 0;
+
+  saveParty(
+    actors.map((actor) => {
+      if (actor.side !== 'party' || actor.hp <= 0 || back === 0) return actor;
+      const mp = Math.min(actor.stats.maxMp, actor.mp + back);
+      mpRecovered += mp - actor.mp;
+      return { ...actor, mp };
+    }),
+  );
+
+  saveInventory(inventory);
+  recordSkillUses(skillUses);
+
+  const levelledTo = gainExp(expGained);
+  // 레벨업은 완전 회복을 겸한다. 회복된 상태를 다시 저장해야 전투 밖으로 이어진다.
+  if (levelledTo !== undefined) saveParty(partyForBattle());
+
+  return { levelledTo, mpRecovered };
+}
+
 /** 전투가 끝난 뒤 파티 쪽 상태만 되가져온다. 스탯은 저장하지 않는다 — 매번 다시 계산한다. */
 export function saveParty(actors: readonly BattleActor[]): void {
   const next: Record<ActorId, Vitals> = {};

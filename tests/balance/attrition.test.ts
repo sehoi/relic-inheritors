@@ -4,7 +4,7 @@ import { createBattle, currentActor, isAlive, step } from '../../src/core/battle
 import { canUseSkill } from '../../src/core/battle/skill.js';
 import { expAtLevel, expForEnemy } from '../../src/core/progress/level.js';
 import { createRng, type Rng } from '../../src/core/rng/index.js';
-import { BATTLE_TUNING } from '../../src/data/battle.js';
+import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../src/data/battle.js';
 import { rollEncounter } from '../../src/data/encounters.js';
 import type { MapId } from '../../src/data/maps.js';
 import { EXP_REWARD, LEVEL_CURVE } from '../../src/data/progression.js';
@@ -15,7 +15,7 @@ import {
   partyProgress,
   partySkills,
   resetParty,
-  saveParty,
+  settleVictory,
 } from '../../src/game/partyStore.js';
 import { ATTRITION } from '../../src/data/invariants.js';
 
@@ -58,12 +58,17 @@ function fight(mapId: MapId, worldRng: Rng, seed: number): boolean {
 
   if (state.outcome !== 'victory') return false;
 
-  saveParty(state.actors);
+  // **게임과 같은 길을 지난다.** `BattleScene` 도 이 함수를 부른다 — 정산이 흩어져 있으면
+  // 시뮬레이터가 게임과 다른 것을 재게 된다 (T-044 에서 실제로 그랬다).
   const defeated = state.actors.filter((a) => a.side === 'enemy' && !isAlive(a)).length;
-  // 레벨업은 완전 회복을 겸한다 (`partyStore.gainExp`).
-  if (gainExp(defeated * expForEnemy(encounter.level, EXP_REWARD)) !== undefined) {
-    saveParty(partyForBattle());
-  }
+  settleVictory(
+    state.actors,
+    state.inventory,
+    {},
+    defeated,
+    defeated * expForEnemy(encounter.level, EXP_REWARD),
+    VICTORY_RECOVERY,
+  );
   return true;
 }
 
