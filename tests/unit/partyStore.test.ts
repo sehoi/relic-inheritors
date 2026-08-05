@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { equip, equippedBy, unequip } from '../../src/core/relic/index.js';
 import {
   currentResonances,
+  getAttunement,
   getLoadout,
   ownedRelics,
+  recordSkillUses,
+  relicRanks,
   partyForBattle,
   partySkills,
   resetParty,
@@ -110,6 +113,26 @@ describe('partyStore', () => {
       expect(member.stats.atk - (bare?.stats.atk ?? 0), member.id).toBe(mods.atk);
       expect(member.stats.def - (bare?.stats.def ?? 0), member.id).toBe(mods.def);
     }
+  });
+
+  it('숙련도가 착용자가 아니라 유물에 쌓인다 (GDD §5.3)', () => {
+    // vanguard 가 잿불 고리로 불꽃 채찍을 네 번 쓴다 → 1단계.
+    recordSkillUses({ 'ember-lash': 4 });
+    expect(relicRanks()['ember-coil']).toBe(1);
+
+    // 유물을 caster 에게 옮겨도 숙련도는 그대로다.
+    let loadout = unequip(getLoadout(), 'vanguard', 0);
+    loadout = unequip(loadout, 'caster', 0);
+    loadout = equip(loadout, 'caster', 0, 'ember-coil', ownedRelics());
+    setLoadout(loadout);
+
+    expect(relicRanks()['ember-coil']).toBe(1);
+    expect(getAttunement()['ember-coil']).toBe(20);
+  });
+
+  it('끼우지 않은 유물에는 쌓이지 않는다', () => {
+    recordSkillUses({ 'sundering-arc': 10 }); // sundering-core 는 장착돼 있지 않다
+    expect(getAttunement()['sundering-core']).toBeUndefined();
   });
 
   it('전멸 후 초기화하면 로드아웃과 상태가 되돌아간다', () => {

@@ -23,6 +23,7 @@ import {
   getInventory,
   partyForBattle,
   partySkills,
+  recordSkillUses,
   resetParty,
   saveInventory,
   saveParty,
@@ -58,6 +59,8 @@ export class BattleScene extends Phaser.Scene {
   private state!: BattleState;
   private returnTo: OverworldEntry | undefined;
 
+  /** 이번 전투에서 스킬을 몇 번 썼는가. 전투가 끝나면 유물 숙련도로 환산된다. */
+  private skillUses: Record<string, number> = {};
   private phase: BattlePhase = 'command';
   private pending: PendingAction | undefined;
   private menuIndex = 0;
@@ -275,6 +278,9 @@ export class BattleScene extends Phaser.Scene {
     const text = this.describe(event);
     if (text !== undefined) this.message(text);
     if (event.type === 'damage') this.popDamage(event.target, event.amount, event.critical);
+    if (event.type === 'skillUsed') {
+      this.skillUses[event.skill] = (this.skillUses[event.skill] ?? 0) + 1;
+    }
 
     this.refreshPanel();
     this.time.delayedCall(text === undefined ? 0 : EVENT_DELAY, () => this.playEvents(queue));
@@ -351,6 +357,8 @@ export class BattleScene extends Phaser.Scene {
     } else {
       saveParty(this.state.actors);
       saveInventory(this.state.inventory);
+      // 쓴 스킬만큼 유물에 숙련도가 쌓인다 (GDD §5.3).
+      recordSkillUses(this.skillUses);
     }
   }
 

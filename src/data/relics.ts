@@ -1,5 +1,6 @@
 import { createRegistry } from '../core/data/registry.js';
 import type { Relic } from '../core/relic/index.js';
+import type { AttunementTuning } from '../core/relic/attunement.js';
 import { skill } from './skills.js';
 
 /**
@@ -19,7 +20,7 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     element: 'fire',
     tags: ['ember'],
     statMods: { mag: 4, maxMp: 3 },
-    actives: [skill('ember-lash')],
+    actives: [{ skill: skill('ember-lash'), unlockRank: 0 }],
     erosionFactor: 1,
     lore: '불을 다루던 자의 손가락뼈에 그대로 남아 있었다.',
   },
@@ -31,7 +32,7 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     element: 'earth',
     tags: ['stone', 'ward'],
     statMods: { atk: 3, def: 5, agi: -1 },
-    actives: [skill('stone-fist')],
+    actives: [{ skill: skill('stone-fist'), unlockRank: 0 }],
     erosionFactor: 0.8,
     lore: '문을 닫기 위해 만들어졌다. 무엇을 가두었는지는 적혀 있지 않다.',
   },
@@ -44,7 +45,11 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     element: 'thunder',
     tags: ['storm', 'hollow'],
     statMods: { mag: 9, maxMp: 6, res: -3 },
-    actives: [skill('sundering-arc'), skill('ember-lash')],
+    actives: [
+      { skill: skill('ember-lash'), unlockRank: 0 },
+      // 진짜 위력은 잠겨 있다. 유물을 계속 쓸 이유가 여기서 나온다 (GDD §5.3).
+      { skill: skill('sundering-arc'), unlockRank: 2 },
+    ],
     erosionFactor: 1.4,
     lore: '세 번째 계승자는 이것을 들고 돌아왔고, 그 뒤로 말을 하지 못했다.',
   },
@@ -58,3 +63,14 @@ export function relic(id: string): Relic {
 
 /** 시작 시 지니고 있는 유물. M4 에서 세이브·획득이 붙으면 이 자리가 바뀐다. */
 export const STARTING_RELICS: readonly string[] = ['ember-coil', 'stone-seal'];
+
+/**
+ * 각인 성장 설정 (GDD §5.3).
+ *
+ * 스킬 한 번에 5. 1단계까지 4회, 2단계까지 12회 — 한 유물을 몇 전투 동안 쓰면
+ * 다음 단계가 열리는 정도로 잡았다. T-027 시뮬레이터가 조정 대상이다.
+ */
+export const ATTUNEMENT: AttunementTuning = {
+  perUse: 5,
+  thresholds: [0, 20, 60, 140, 300, 600],
+};
