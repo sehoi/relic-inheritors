@@ -23,6 +23,9 @@ import { PORTALS_BY_MAP } from '../../src/data/portals.js';
 import { ZONES_BY_MAP, zonesForMap } from '../../src/data/zones.js';
 import { SITES_BY_MAP, sitesForMap } from '../../src/data/sites.js';
 import { duplicateRewards, validateSites } from '../../src/core/world/site.js';
+import { cleansedErosion, validateFacilities } from '../../src/core/world/facility.js';
+import { CLEANSING, facilitiesForMap } from '../../src/data/facilities.js';
+import { item } from '../../src/data/items.js';
 import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
@@ -266,11 +269,64 @@ describe('회수 지점 (T-039)', () => {
     expect(tooSafe, `안전지대에 있습니다:\n${tooSafe.join('\n')}`).toEqual([]);
   });
 
-  it('맵마다 1~2개다 (GDD §6.1)', () => {
-    for (const id of MAP_IDS) {
+  it('유적 층마다 1~2개다 (GDD §6.1)', () => {
+    // 거점에는 없다 — 유물은 유적에서 나온다.
+    for (const id of MAP_IDS.filter((mapId) => mapId !== 'haven')) {
       expect(sitesForMap(id).length, id).toBeGreaterThanOrEqual(1);
       expect(sitesForMap(id).length, id).toBeLessThanOrEqual(2);
     }
+  });
+
+  it('거점에는 회수 지점이 없다', () => {
+    expect(sitesForMap('haven')).toEqual([]);
+  });
+});
+
+describe('거점 시설 (T-040)', () => {
+  it.each([...MAP_IDS])('%s: 배치가 유효하다', (id) => {
+    // 벽 속·다른 것 위에 놓이면 쓸 수 없고, 사방이 막혀도 마찬가지다.
+    expect(() =>
+      validateFacilities(id, mapOf(id), facilitiesForMap(id), {
+        occupied: [
+          ...(NPCS_BY_MAP[id] ?? []).map((npc) => npc.position),
+          ...(PORTALS_BY_MAP[id] ?? []).map((portal) => portal.position),
+          ...sitesForMap(id).map((site) => site.position),
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it('거점에 정화소가 있다', () => {
+    // GDD §6.4 의 최소 조건. 없으면 거점이 그냥 빈 방이다.
+    expect(facilitiesForMap('haven').some((f) => f.kind === 'cleansing')).toBe(true);
+  });
+
+  it('거점은 통째로 안전지대다', () => {
+    // 돌아올 곳에서 전투가 벌어지면 거점의 목적이 성립하지 않는다.
+    expect(zonesForMap('haven').every((zone) => !zone.encounters)).toBe(true);
+  });
+
+  it('정화소가 정화석보다 낫다 (GDD §5.4)', () => {
+    // 그러지 않으면 거점까지 걸어올 이유가 없고, 거점이 없는 것과 같아진다.
+    const stoneEffect = item('cleansing-stone').effect;
+    const stone = stoneEffect.kind === 'cleanse' ? stoneEffect.erosion : 0;
+
+    // 침식이 정화석 한 개 분량 이상 쌓였을 때를 본다 — 그 아래는 거점에 갈 구간이 아니다.
+    for (const erosion of [stone, stone * 2, stone * 4]) {
+      const byPool = erosion - cleansedErosion(erosion, CLEANSING);
+      expect(byPool, `침식 ${erosion}`).toBeGreaterThanOrEqual(stone);
+    }
+  });
+
+  it('깊이 쌓인 침식은 한 번에 지워지지 않는다', () => {
+    // 다 지워지면 "센 유물을 언제 쓰나" 라는 판단이 사라진다 (침식은 리스크 축이다).
+    // 얕은 침식이 말끔히 씻기는 것은 괜찮다 — 남아야 하는 것은 무리한 대가 쪽이다.
+    expect(cleansedErosion(200, CLEANSING)).toBeGreaterThan(0);
+    expect(cleansedErosion(400, CLEANSING)).toBeGreaterThan(cleansedErosion(200, CLEANSING));
+  });
+
+  it('씻을 것이 없으면 0 이다', () => {
+    expect(cleansedErosion(0, CLEANSING)).toBe(0);
   });
 });
 

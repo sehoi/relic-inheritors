@@ -6,7 +6,12 @@ import {
   startCounter,
   type EncounterTuning,
 } from '../../src/core/world/encounter.js';
-import { AREA_LEVELS, ENCOUNTER_STEPS, ENCOUNTER_TABLES } from '../../src/data/encounters.js';
+import {
+  AREA_LEVELS,
+  ENCOUNTER_STEPS,
+  ENCOUNTER_TABLES,
+  rollEncounter,
+} from '../../src/data/encounters.js';
 import { MAP_IDS } from '../../src/data/maps.js';
 
 const TUNING: EncounterTuning = { minSteps: 8, maxSteps: 20 };
@@ -116,11 +121,23 @@ describe('pickWeighted', () => {
 });
 
 describe('인카운터 테이블 (콘텐츠)', () => {
-  it('모든 맵에 테이블과 지역 레벨이 있다', () => {
+  it('테이블과 지역 레벨은 짝으로 있거나 짝으로 없다', () => {
+    // 한쪽만 있으면 `rollEncounter` 가 절반만 아는 상태가 된다.
     for (const mapId of MAP_IDS) {
-      expect(ENCOUNTER_TABLES[mapId]?.length, mapId).toBeGreaterThan(0);
-      expect(AREA_LEVELS[mapId], mapId).toBeGreaterThan(0);
+      const hasTable = ENCOUNTER_TABLES[mapId] !== undefined;
+      const hasLevel = AREA_LEVELS[mapId] !== undefined;
+      expect(hasTable, `${mapId}: 테이블 ${hasTable}, 레벨 ${hasLevel}`).toBe(hasLevel);
+
+      if (hasTable) {
+        expect(ENCOUNTER_TABLES[mapId]?.length, mapId).toBeGreaterThan(0);
+        expect(AREA_LEVELS[mapId], mapId).toBeGreaterThan(0);
+      }
     }
+  });
+
+  it('인카운터가 없는 맵을 굴리면 던진다', () => {
+    // 안전지대 판정이 먼저 걸러야 한다. 여기까지 왔다면 배선이 틀린 것이므로 조용히 넘기지 않는다.
+    expect(() => rollEncounter('haven', createRng(1))).toThrow(/인카운터가 없습니다/);
   });
 
   it('적 수와 가중치가 양수다', () => {
@@ -133,10 +150,16 @@ describe('인카운터 테이블 (콘텐츠)', () => {
   });
 
   it('깊은 층이 더 위험하다 (층 자체가 난이도 축이다)', () => {
-    const entranceAvg = averageMobs('ruin-entrance');
-    const depthsAvg = averageMobs('ruin-depths');
-    expect(depthsAvg).toBeGreaterThan(entranceAvg);
-    expect(AREA_LEVELS['ruin-depths']).toBeGreaterThan(AREA_LEVELS['ruin-entrance']);
+    // 적 수는 이제 두 층이 같다 — 실측에서 적 수가 레벨보다 훨씬 세게 먹혀
+    // 지하를 3~4마리 중심으로 두면 감당할 수 없었다 (T-044). 난이도 축은 레벨이 진다.
+    expect(AREA_LEVELS['ruin-depths'] ?? 0).toBeGreaterThan(AREA_LEVELS['ruin-entrance'] ?? 0);
+    expect(averageMobs('ruin-depths')).toBeGreaterThanOrEqual(averageMobs('ruin-entrance'));
+  });
+
+  it('거점에는 인카운터가 없다', () => {
+    // 돌아올 곳에서 전투가 벌어지면 거점의 목적이 성립하지 않는다.
+    expect(ENCOUNTER_TABLES['haven']).toBeUndefined();
+    expect(AREA_LEVELS['haven']).toBeUndefined();
   });
 
   it('걸음 수 범위가 유효하다', () => {
@@ -146,7 +169,7 @@ describe('인카운터 테이블 (콘텐츠)', () => {
 });
 
 function averageMobs(mapId: 'ruin-entrance' | 'ruin-depths'): number {
-  const table = ENCOUNTER_TABLES[mapId];
+  const table = ENCOUNTER_TABLES[mapId] ?? [];
   const total = table.reduce((sum, entry) => sum + entry.weight, 0);
   return table.reduce((sum, entry) => sum + entry.weight * entry.mobCount, 0) / total;
 }

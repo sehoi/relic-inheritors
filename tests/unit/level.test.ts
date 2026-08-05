@@ -78,7 +78,7 @@ describe('validateLevelCurve', () => {
 });
 
 describe('실제 곡선 (초반이 빨라야 한다)', () => {
-  const mobExp = expForEnemy(AREA_LEVELS['ruin-entrance'], EXP_REWARD);
+  const mobExp = expForEnemy(AREA_LEVELS['ruin-entrance'] ?? 1, EXP_REWARD);
 
   it('첫 레벨업이 첫 전투에서 온다', () => {
     // 처음 몇 판에서 레벨이 오르지 않으면 플레이어는 자기가 나아지는지 알 수 없다.

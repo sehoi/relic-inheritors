@@ -1,5 +1,6 @@
 import rawRuinEntrance from '../../data/maps/ruin-entrance.tmj?raw';
 import rawRuinDepths from '../../data/maps/ruin-depths.tmj?raw';
+import rawHaven from '../../data/maps/haven.tmj?raw';
 import { parseTiledMap, type TileMap } from '../../core/world/tilemap.js';
 import type { MapId } from '../../data/maps.js';
 
@@ -15,6 +16,7 @@ import type { MapId } from '../../data/maps.js';
 const RAW_MAPS: Readonly<Record<MapId, string>> = {
   'ruin-entrance': rawRuinEntrance,
   'ruin-depths': rawRuinDepths,
+  haven: rawHaven,
 };
 
 // 맵은 바뀌지 않으므로 한 번만 파싱한다. 층을 오갈 때마다 다시 파싱할 이유가 없다.

@@ -345,6 +345,57 @@ test('탐색 중 R 로 장착 화면을 열고 제자리로 돌아온다', async
 });
 
 /**
+ * 거점으로 나가 정화소를 쓴다 (T-040).
+ *
+ * **거점은 돌아올 곳이다.** 나가는 길이 실제로 이어져 있고, 거기서 무언가 할 수 있어야
+ * 거점이 성립한다.
+ */
+test('거점으로 나가 정화소를 쓸 수 있다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+
+  // 야영지 구석(2,2)이 거점으로 나가는 길이다. 스폰 (8,6) 에서 왼쪽 위로.
+  for (let i = 0; i < 6; i += 1) await stepKey(page, 'ArrowLeft');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '2,6');
+
+  for (let i = 0; i < 4; i += 1) await stepKey(page, 'ArrowUp');
+
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'haven', { timeout: 10_000 });
+  // 거점은 통째로 안전지대다 — 돌아올 곳에서 전투가 벌어지면 목적이 성립하지 않는다.
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'safe');
+  await page.screenshot({ path: `${SHOT_DIR}/haven.png` });
+
+  // 정화소(10,8) 로 간다. 도착 지점은 (35,12).
+  await expect(page.locator('body')).toHaveAttribute('data-player', '35,12');
+  for (let i = 0; i < 25; i += 1) await stepKey(page, 'ArrowLeft');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '10,12');
+
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowUp');
+  // 시설은 길을 막는다 — (10,9) 에서 멈춰 정화소를 마주 본다.
+  await expect(page.locator('body')).toHaveAttribute('data-player', '10,9');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'up');
+
+  await stepKey(page, 'Space');
+  await expect(page.locator('body')).toHaveAttribute('data-dialogue', /^1\//);
+  await page.screenshot({ path: `${SHOT_DIR}/cleansing.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 회수 지점에서 유물을 줍고, 그 사실이 세이브를 건넌다 (T-039).
  *
  * **다시 주울 수 있으면 저장·로드 반복이 유물 무한 획득이 된다.** 주웠다는 사실이
