@@ -14,6 +14,7 @@ import {
 } from '../../src/core/battle/index.js';
 import type { DamageTuning } from '../../src/core/battle/damage.js';
 import type { Skill } from '../../src/core/battle/skill.js';
+import type { Item } from '../../src/core/battle/item.js';
 
 /** 변동폭·치명타를 끈 결정론 설정. 전투 흐름을 볼 때 데미지가 흔들리면 검사가 어렵다. */
 const FLAT_DAMAGE: DamageTuning = {
@@ -557,6 +558,88 @@ describe('상태이상과 커맨드', () => {
 
     expect(events).toContainEqual({ type: 'overload', actor: 'hero' });
     expect(events.some((e) => e.type === 'ailmentBlocked')).toBe(false);
+  });
+});
+
+describe('아이템 커맨드', () => {
+  const herb: Item = { id: 'herb', name: '약초', effect: { kind: 'heal', amount: 40 } };
+  const ember: Item = {
+    id: 'ember',
+    name: '잿불',
+    effect: { kind: 'revive', hpRatio: 0.35 },
+  };
+
+  const wounded = (): BattleActor[] => [
+    actor('hero', 'party', 30),
+    { ...actor('ally', 'party', 25), hp: 40 },
+    actor('slime', 'enemy', 20),
+  ];
+
+  it('회복하고 소지품을 소비한다', () => {
+    const state = createBattle(wounded(), 1, NO_JITTER, { herb: 2 });
+    const { state: next, events } = step(
+      state,
+      { type: 'item', actor: 'hero', target: 'ally', item: herb },
+      NO_JITTER,
+    );
+
+    expect(actorById(next, 'ally').hp).toBe(80);
+    expect(next.inventory).toEqual({ herb: 1 });
+    expect(events).toContainEqual({
+      type: 'itemUsed',
+      actor: 'hero',
+      target: 'ally',
+      item: 'herb',
+    });
+    expect(events).toContainEqual({ type: 'heal', target: 'ally', amount: 40 });
+  });
+
+  it('가지고 있지 않으면 거부하고 상태를 건드리지 않는다', () => {
+    const state = createBattle(wounded(), 1, NO_JITTER, {});
+    expect(() =>
+      step(state, { type: 'item', actor: 'hero', target: 'ally', item: herb }, NO_JITTER),
+    ).toThrow(/없다/);
+    expect(actorById(state, 'ally').hp).toBe(40);
+  });
+
+  it('쓰러진 동료를 부활시킨다', () => {
+    const downed = [
+      actor('hero', 'party', 30),
+      { ...actor('ally', 'party', 25), hp: 0 },
+      actor('slime', 'enemy', 20),
+    ];
+    const state = createBattle(downed, 1, NO_JITTER, { ember: 1 });
+    const { state: next, events } = step(
+      state,
+      { type: 'item', actor: 'hero', target: 'ally', item: ember },
+      NO_JITTER,
+    );
+
+    expect(actorById(next, 'ally').hp).toBe(35);
+    expect(events).toContainEqual({ type: 'revive', actor: 'ally' });
+    expect(next.inventory).toEqual({});
+  });
+
+  it('회복 아이템으로는 쓰러진 동료를 일으키지 못한다', () => {
+    const downed = [
+      actor('hero', 'party', 30),
+      { ...actor('ally', 'party', 25), hp: 0 },
+      actor('slime', 'enemy', 20),
+    ];
+    const state = createBattle(downed, 1, NO_JITTER, { herb: 1 });
+    expect(() =>
+      step(state, { type: 'item', actor: 'hero', target: 'ally', item: herb }, NO_JITTER),
+    ).toThrow(/이미 쓰러졌다/);
+  });
+
+  it('소지품이 라운드를 넘어 이어진다', () => {
+    let state: BattleState = createBattle(wounded(), 1, NO_JITTER, { herb: 2 });
+    state = step(state, { type: 'item', actor: 'hero', target: 'ally', item: herb }, NO_JITTER).state;
+    // 민첩 순으로 hero(30) → ally(25) → slime(20). 남은 두 턴을 흘려 라운드를 넘긴다.
+    state = runPass(state, NO_JITTER).state;
+    state = runPass(state, NO_JITTER).state;
+    expect(state.round).toBe(2);
+    expect(state.inventory).toEqual({ herb: 1 });
   });
 });
 
