@@ -18,6 +18,14 @@ import {
   type Element,
   type ElementAffinity,
 } from './damage.js';
+import {
+  applySkillCost,
+  isOverloaded,
+  relieveErosion,
+  skillBlockReason,
+  type ErosionTuning,
+  type Skill,
+} from './skill.js';
 
 export type ActorId = string;
 export type Side = 'party' | 'enemy';
@@ -71,6 +79,13 @@ export const BASIC_ATTACK: AttackSpec = { power: 100, element: 'none', kind: 'ph
 export type Command =
   | { readonly type: 'pass'; readonly actor: ActorId }
   | { readonly type: 'attack'; readonly actor: ActorId; readonly target: ActorId }
+  /** 스킬 객체를 그대로 담는다 — 상태 머신이 콘텐츠 레지스트리를 알 필요가 없다. */
+  | {
+      readonly type: 'skill';
+      readonly actor: ActorId;
+      readonly target: ActorId;
+      readonly skill: Skill;
+    }
   | { readonly type: 'guard'; readonly actor: ActorId }
   | { readonly type: 'flee'; readonly actor: ActorId };
 
@@ -93,6 +108,10 @@ export type BattleEvent =
       readonly elementMod: number;
     }
   | { readonly type: 'heal'; readonly target: ActorId; readonly amount: number }
+  | { readonly type: 'skillUsed'; readonly actor: ActorId; readonly skill: string }
+  /** 침식이 한계를 넘어 제어를 잃었다. 뒤따르는 damage 의 대상은 아군일 수도 있다. */
+  | { readonly type: 'overload'; readonly actor: ActorId }
+  | { readonly type: 'erosion'; readonly actor: ActorId; readonly value: number }
   | { readonly type: 'guard'; readonly actor: ActorId }
   | { readonly type: 'flee'; readonly actor: ActorId; readonly success: boolean }
   | { readonly type: 'death'; readonly actor: ActorId }
@@ -127,6 +146,7 @@ export interface BattleTuning {
   readonly turnOrder: TurnOrderTuning;
   readonly damage: DamageTuning;
   readonly flee: FleeTuning;
+  readonly erosion: ErosionTuning;
 }
 
 /**
@@ -256,6 +276,50 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
   let actors = replaceActor(state.actors, { ...acting, guarding: false });
   let fled = false;
 
+  /** 한 대상에게 피해를 입히고 이벤트를 쌓는다. 공격·스킬·폭주가 공유한다. */
+  const strike = (target: BattleActor, attack: AttackSpec): void => {
+    const result = resolveDamage(acting, target, attack, rng, tuning.damage);
+    const hurt = applyDamage(target, result.amount);
+    actors = replaceActor(actors, hurt);
+
+    events.push({
+      type: 'damage',
+      source: acting.id,
+      target: target.id,
+      amount: result.amount,
+      critical: result.critical,
+      element: attack.element,
+      elementMod: result.elementMod,
+    });
+    if (!isAlive(hurt)) events.push({ type: 'death', actor: hurt.id });
+  };
+
+  const livingTarget = (id: ActorId): BattleActor => {
+    const target = actors.find((a) => a.id === id);
+    if (target === undefined) throw new Error(`대상 "${id}" 가 전투에 없습니다.`);
+    if (!isAlive(target)) throw new Error(`대상 "${id}" 는 이미 쓰러졌습니다.`);
+    return target;
+  };
+
+  // ── 폭주 ────────────────────────────────────────────────────────────────
+  // 침식이 한계를 넘으면 커맨드가 무시되고 아무나 후려친다 (GDD §5.4).
+  // 커맨드 검증보다 **먼저** 확인한다 — 제어를 잃은 상태에서 무엇을 고르든 의미가 없다.
+  if (isOverloaded(acting, tuning.erosion)) {
+    events.push({ type: 'overload', actor: acting.id });
+
+    const candidates = actors.filter((a) => a.id !== acting.id && isAlive(a));
+    if (candidates.length > 0) strike(rng.pick(candidates), BASIC_ATTACK);
+
+    const relieved = relieveErosion(
+      actors.find((a) => a.id === acting.id) as BattleActor,
+      tuning.erosion,
+    );
+    actors = replaceActor(actors, relieved);
+    events.push({ type: 'erosion', actor: acting.id, value: relieved.erosion });
+
+    return finishTurn(state, actors, events, rng, tuning, false);
+  }
+
   switch (command.type) {
     case 'pass':
       break;
@@ -267,28 +331,23 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     }
 
     case 'attack': {
-      const target = actors.find((a) => a.id === command.target);
-      if (target === undefined) {
-        throw new Error(`대상 "${command.target}" 가 전투에 없습니다.`);
-      }
-      if (!isAlive(target)) {
-        throw new Error(`대상 "${command.target}" 는 이미 쓰러졌습니다.`);
+      strike(livingTarget(command.target), BASIC_ATTACK);
+      break;
+    }
+
+    case 'skill': {
+      // 자원 검사를 먼저 한다. 쓸 수 없는 스킬이 상태를 반쯤 바꿔놓고 실패하면 안 된다.
+      const blocked = skillBlockReason(acting, command.skill, tuning.erosion);
+      if (blocked !== undefined) {
+        throw new Error(`"${command.skill.name}" 를 쓸 수 없습니다: ${blocked}`);
       }
 
-      const result = resolveDamage(acting, target, BASIC_ATTACK, rng, tuning.damage);
-      const hurt = applyDamage(target, result.amount);
-      actors = replaceActor(actors, hurt);
+      const paid = applySkillCost(acting, command.skill, tuning.erosion);
+      actors = replaceActor(actors, paid);
 
-      events.push({
-        type: 'damage',
-        source: acting.id,
-        target: target.id,
-        amount: result.amount,
-        critical: result.critical,
-        element: BASIC_ATTACK.element,
-        elementMod: result.elementMod,
-      });
-      if (!isAlive(hurt)) events.push({ type: 'death', actor: hurt.id });
+      events.push({ type: 'skillUsed', actor: acting.id, skill: command.skill.id });
+      strike(livingTarget(command.target), command.skill.attack);
+      events.push({ type: 'erosion', actor: acting.id, value: paid.erosion });
       break;
     }
 
@@ -304,7 +363,19 @@ export function step(state: BattleState, command: Command, tuning: BattleTuning)
     }
   }
 
-  events.push({ type: 'turnEnd', actor: acting.id });
+  return finishTurn(state, actors, events, rng, tuning, fled);
+}
+
+/** 턴을 닫고 큐·라운드·승패를 정리한다. 정상 행동과 폭주가 공유한다. */
+function finishTurn(
+  state: BattleState,
+  actors: readonly BattleActor[],
+  events: BattleEvent[],
+  rng: Rng,
+  tuning: BattleTuning,
+  fled: boolean,
+): StepResult {
+  events.push({ type: 'turnEnd', actor: state.queue[0] as ActorId });
 
   // 죽은 액터는 남은 순서에서도 빠진다.
   const alive = new Set(actors.filter(isAlive).map((a) => a.id));

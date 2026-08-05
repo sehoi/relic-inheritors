@@ -1,0 +1,81 @@
+/**
+ * 스킬과 침식 (GDD §5.4, ADR-001).
+ *
+ * **침식이 이 게임의 리스크 축이다.** 강한 유물 스킬일수록 침식이 많이 쌓이고,
+ * 임계에 닿으면 폭주해 한 턴을 잃고 아군까지 때린다. 이게 없으면
+ * "가장 센 스킬만 계속 쓰면 된다" 가 정답이 되어 조합 설계가 무의미해진다.
+ *
+ * 침식은 전투가 끝나도 남는다. 거점의 정화소에서 씻어내는 것이 M4 범위다.
+ */
+
+import type { AttackSpec } from './damage.js';
+import type { BattleActor } from './index.js';
+
+export interface Skill {
+  readonly id: string;
+  readonly name: string;
+  readonly mpCost: number;
+  /** 사용 시 쌓이는 침식. 위력이 높을수록 크게 잡는다. */
+  readonly erosion: number;
+  readonly attack: AttackSpec;
+}
+
+export interface ErosionTuning {
+  /** 이 값에 닿으면 폭주한다. */
+  readonly threshold: number;
+  /**
+   * 폭주 후 남는 침식의 비율.
+   *
+   * 0으로 두지 않는다 — 폭주가 침식을 완전히 씻어내면 "일부러 폭주시키고 다시 시작"이
+   * 최적 전략이 된다. 일부만 해소되어야 거점 정화소에 갈 이유가 생긴다.
+   */
+  readonly reliefRatio: number;
+  /** 상한. 이 위로는 쌓이지 않는다. */
+  readonly max: number;
+}
+
+export function isOverloaded(actor: BattleActor, tuning: ErosionTuning): boolean {
+  return actor.erosion >= tuning.threshold;
+}
+
+/**
+ * 스킬을 쓸 수 없는 이유. 쓸 수 있으면 `undefined`.
+ *
+ * 불리언이 아니라 이유를 돌려주는 이유는, UI 가 "왜 회색인지" 를 보여줘야 하고
+ * AI 도 같은 판단을 재사용하기 때문이다.
+ */
+export function skillBlockReason(
+  actor: BattleActor,
+  skill: Skill,
+  tuning: ErosionTuning,
+): string | undefined {
+  if (isOverloaded(actor, tuning)) return '침식이 한계에 달해 유물이 봉인되었다';
+  if (actor.mp < skill.mpCost) return `MP가 부족하다 (${actor.mp}/${skill.mpCost})`;
+  return undefined;
+}
+
+export function canUseSkill(
+  actor: BattleActor,
+  skill: Skill,
+  tuning: ErosionTuning,
+): boolean {
+  return skillBlockReason(actor, skill, tuning) === undefined;
+}
+
+/** MP 를 소비하고 침식을 쌓은 새 액터. 사용 가능 여부는 호출 전에 확인해야 한다. */
+export function applySkillCost(
+  actor: BattleActor,
+  skill: Skill,
+  tuning: ErosionTuning,
+): BattleActor {
+  return {
+    ...actor,
+    mp: Math.max(0, actor.mp - skill.mpCost),
+    erosion: Math.min(tuning.max, actor.erosion + skill.erosion),
+  };
+}
+
+/** 폭주가 끝난 뒤 침식을 일부 해소한다. */
+export function relieveErosion(actor: BattleActor, tuning: ErosionTuning): BattleActor {
+  return { ...actor, erosion: Math.floor(actor.erosion * tuning.reliefRatio) };
+}

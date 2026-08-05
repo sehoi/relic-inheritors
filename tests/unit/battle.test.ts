@@ -13,6 +13,7 @@ import {
   type BattleTuning,
 } from '../../src/core/battle/index.js';
 import type { DamageTuning } from '../../src/core/battle/damage.js';
+import type { Skill } from '../../src/core/battle/skill.js';
 
 /** 변동폭·치명타를 끈 결정론 설정. 전투 흐름을 볼 때 데미지가 흔들리면 검사가 어렵다. */
 const FLAT_DAMAGE: DamageTuning = {
@@ -32,6 +33,7 @@ const TUNING: BattleTuning = {
   turnOrder: { jitter: 0.15 },
   damage: FLAT_DAMAGE,
   flee: { baseChance: 0.5, agiFactor: 0.02, minChance: 0.1, maxChance: 0.95 },
+  erosion: { threshold: 100, reliefRatio: 0.5, max: 200 },
 };
 
 const NO_JITTER: BattleTuning = { ...TUNING, turnOrder: { jitter: 0 } };
@@ -305,6 +307,111 @@ describe('도망 커맨드', () => {
     let state = createBattle(swift(), 1, NO_JITTER);
     state = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER).state;
     expect(() => step(state, { type: 'flee', actor: 'slime' }, NO_JITTER)).toThrow(/파티만/);
+  });
+});
+
+describe('스킬 커맨드', () => {
+  const blaze: Skill = {
+    id: 'blaze',
+    name: '불꽃',
+    mpCost: 4,
+    erosion: 30,
+    attack: { power: 200, element: 'fire', kind: 'magical' },
+  };
+
+  const pair = (): BattleActor[] => [actor('hero', 'party', 30), actor('slime', 'enemy', 20)];
+
+  it('MP 를 쓰고 침식을 쌓으며 피해를 준다', () => {
+    const state = createBattle(pair(), 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'skill', actor: 'hero', target: 'slime', skill: blaze },
+      NO_JITTER,
+    );
+
+    const hero = actorById(next, 'hero');
+    expect(hero.mp).toBe(16);
+    expect(hero.erosion).toBe(30);
+    expect(events).toContainEqual({ type: 'skillUsed', actor: 'hero', skill: 'blaze' });
+    expect(events).toContainEqual({ type: 'erosion', actor: 'hero', value: 30 });
+    expect(actorById(next, 'slime').hp).toBeLessThan(100);
+  });
+
+  it('MP 가 모자라면 거부하고 상태를 건드리지 않는다', () => {
+    const poor = [{ ...actor('hero', 'party', 30), mp: 1 }, actor('slime', 'enemy', 20)];
+    const state = createBattle(poor, 1, NO_JITTER);
+    expect(() =>
+      step(state, { type: 'skill', actor: 'hero', target: 'slime', skill: blaze }, NO_JITTER),
+    ).toThrow(/MP/);
+    expect(actorById(state, 'slime').hp).toBe(100);
+  });
+
+  it('스킬 속성이 대상 내성에 걸린다', () => {
+    const resistant: BattleActor = { ...actor('slime', 'enemy', 20), affinity: { fire: 0.5 } };
+    const state = createBattle([actor('hero', 'party', 30), resistant], 1, NO_JITTER);
+    const { events } = step(
+      state,
+      { type: 'skill', actor: 'hero', target: 'slime', skill: blaze },
+      NO_JITTER,
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'damage', element: 'fire', elementMod: 0.5 }),
+    );
+  });
+});
+
+describe('폭주 (침식 한계)', () => {
+  const overloaded = (): BattleActor[] => [
+    { ...actor('hero', 'party', 30), erosion: 120 },
+    actor('ally', 'party', 25),
+    actor('slime', 'enemy', 20),
+  ];
+
+  it('커맨드를 무시하고 아무나 공격한다', () => {
+    const state = createBattle(overloaded(), 1, NO_JITTER);
+    const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+
+    expect(events).toContainEqual({ type: 'overload', actor: 'hero' });
+    expect(events.some((e) => e.type === 'damage')).toBe(true);
+
+    // 대상은 아군일 수도 적일 수도 있다 — 제어를 잃었으므로.
+    const hurt = next.actors.filter((a) => a.id !== 'hero' && a.hp < 100);
+    expect(hurt).toHaveLength(1);
+  });
+
+  it('폭주 후 침식이 일부 해소되고 상태가 풀린다', () => {
+    const state = createBattle(overloaded(), 1, NO_JITTER);
+    const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+
+    expect(actorById(next, 'hero').erosion).toBe(60);
+    expect(events).toContainEqual({ type: 'erosion', actor: 'hero', value: 60 });
+  });
+
+  it('폭주 중에는 스킬을 쓸 수 없다 — 커맨드 자체가 무시된다', () => {
+    const blaze: Skill = {
+      id: 'blaze',
+      name: '불꽃',
+      mpCost: 4,
+      erosion: 30,
+      attack: { power: 200, element: 'fire', kind: 'magical' },
+    };
+    const state = createBattle(overloaded(), 1, NO_JITTER);
+    const { state: next, events } = step(
+      state,
+      { type: 'skill', actor: 'hero', target: 'slime', skill: blaze },
+      NO_JITTER,
+    );
+
+    // 스킬은 발동하지 않았다.
+    expect(events.some((e) => e.type === 'skillUsed')).toBe(false);
+    expect(actorById(next, 'hero').mp).toBe(20);
+  });
+
+  it('턴은 정상적으로 넘어간다', () => {
+    const state = createBattle(overloaded(), 1, NO_JITTER);
+    const { state: next, events } = step(state, { type: 'pass', actor: 'hero' }, NO_JITTER);
+    expect(events).toContainEqual({ type: 'turnEnd', actor: 'hero' });
+    expect(next.queue[0]).not.toBe('hero');
   });
 });
 
