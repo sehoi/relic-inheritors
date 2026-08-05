@@ -5,6 +5,7 @@ import type { AilmentState } from '../core/battle/status.js';
 import { createRng, type Rng } from '../core/rng/index.js';
 import {
   activesOf,
+  allEquipped,
   applyStatMods,
   createLoadout,
   equip,
@@ -12,6 +13,12 @@ import {
   sumStatMods,
   type Loadout,
 } from '../core/relic/index.js';
+import {
+  activeResonances,
+  resonanceStatMods,
+  type Resonance,
+} from '../core/relic/resonance.js';
+import { ALL_RESONANCES } from '../data/resonances.js';
 import { AREA_LEVELS, starterParty } from '../data/encounters.js';
 import { STARTING_MAP } from '../data/maps.js';
 import { STARTING_RELICS, relic } from '../data/relics.js';
@@ -103,12 +110,23 @@ export function setLoadout(next: Loadout): void {
  * 기본 스탯에 **장착 유물의 보정을 얹어** 만든다 (ADR-004). 이어받은 HP·MP 는
  * 새 최대치를 넘지 않게 자른다 — 유물을 빼면 최대 HP 가 줄어들 수 있다.
  */
+/** 지금 발동 중인 공명. 장착 화면(T-029)과 전투가 같은 판정을 쓴다. */
+export function currentResonances(): readonly Resonance[] {
+  const equipped = allEquipped(getLoadout()).map((id) => relic(id));
+  return activeResonances(ALL_RESONANCES, equipped);
+}
+
 export function partyForBattle(): BattleActor[] {
   const current = getLoadout();
+  // 공명은 파티 **전원**에게 같은 값으로 붙는다 (GDD §5.2).
+  const shared = resonanceStatMods(currentResonances());
 
   return basePartyMembers().map((member) => {
     const relics = equippedBy(current, member.id).map((id) => relic(id));
-    const stats = applyStatMods(member.stats, sumStatMods(relics));
+    const stats = applyStatMods(
+      applyStatMods(member.stats, sumStatMods(relics)),
+      shared,
+    );
     const saved = vitals?.[member.id];
 
     return {
