@@ -19,7 +19,7 @@ import {
   type EncounterCounter,
 } from '../../core/world/encounter.js';
 import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
-import { getInventory, getParty, worldRandom } from '../partyStore.js';
+import { getInventory, partyForBattle, partySkills, worldRandom } from '../partyStore.js';
 import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
@@ -188,7 +188,11 @@ export class OverworldScene extends Phaser.Scene {
     const rng = worldRandom();
     this.leaving = true;
     this.scene.start('battle', {
-      encounter: rollEncounter(this.mapId, rng, getParty(), getInventory()),
+      encounter: rollEncounter(this.mapId, rng, {
+        party: partyForBattle(),
+        partySkills: partySkills(),
+        inventory: getInventory(),
+      }),
       seed: rng.int(1, 1_000_000),
       returnTo: {
         mapId: this.mapId,
