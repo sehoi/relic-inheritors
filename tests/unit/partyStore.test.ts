@@ -22,6 +22,7 @@ import {
   saveInventory,
   saveParty,
   setLoadout,
+  settleVictory,
   worldRandom,
 } from '../../src/game/partyStore.js';
 import {
@@ -164,6 +165,56 @@ describe('partyStore', () => {
   it('끼우지 않은 유물에는 쌓이지 않는다', () => {
     recordSkillUses({ 'sundering-arc': 10 }); // sundering-core 는 장착돼 있지 않다
     expect(getAttunement()['sundering-core']).toBeUndefined();
+  });
+
+  describe('승리 정산 (T-046)', () => {
+    const RECOVERY = { mpPerEnemy: 1 };
+
+    /** MP 를 바닥낸 파티. 소모전 후반의 모습이다. */
+    function drained(): ReturnType<typeof partyForBattle> {
+      return partyForBattle().map((m) => ({ ...m, hp: 20, mp: 0 }));
+    }
+
+    it('적을 쓰러뜨린 만큼 MP 가 돌아온다', () => {
+      const result = settleVictory(drained(), getInventory(), {}, 3, 0, RECOVERY);
+      expect(result.mpRecovered).toBeGreaterThan(0);
+      for (const member of partyForBattle()) expect(member.mp).toBe(3);
+    });
+
+    it('HP 는 돌아오지 않는다 (소모전의 축이다)', () => {
+      settleVictory(drained(), getInventory(), {}, 2, 0, RECOVERY);
+      for (const member of partyForBattle()) expect(member.hp).toBe(20);
+    });
+
+    it('최대 MP 를 넘지 않는다', () => {
+      const full = partyForBattle();
+      settleVictory(full, getInventory(), {}, 99, 0, RECOVERY);
+      for (const member of partyForBattle()) {
+        expect(member.mp).toBe(member.stats.maxMp);
+      }
+    });
+
+    it('쓰러진 파티원은 회복하지 않는다', () => {
+      const fallen = partyForBattle().map((m) => ({ ...m, hp: 0, mp: 0 }));
+      settleVictory(fallen, getInventory(), {}, 3, 0, RECOVERY);
+      expect(partyForBattle()[0]?.mp).toBe(0);
+    });
+
+    it('레벨이 오르면 완전 회복이 MP 회복을 덮는다', () => {
+      // 레벨업 회복이 먼저 적용되면 MP 회복이 사라진 것처럼 보인다. 순서가 중요하다.
+      const result = settleVictory(drained(), getInventory(), {}, 2, 10_000, RECOVERY);
+      expect(result.levelledTo).toBeDefined();
+      for (const member of partyForBattle()) {
+        expect(member.hp).toBe(member.stats.maxHp);
+        expect(member.mp).toBe(member.stats.maxMp);
+      }
+    });
+
+    it('숙련도와 소지품도 함께 반영된다', () => {
+      settleVictory(drained(), { herb: 1 }, { 'ember-lash': 4 }, 1, 0, RECOVERY);
+      expect(getInventory()).toEqual({ herb: 1 });
+      expect(relicRanks()['ember-coil']).toBe(1);
+    });
   });
 
   describe('세이브 (T-037)', () => {

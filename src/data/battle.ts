@@ -99,6 +99,26 @@ export const AILMENT_POWER: AilmentValue = {
   poison: 40,
 };
 
+/**
+ * 승리 뒤 돌아오는 것 (T-046).
+ *
+ * **MP 만 돌아온다. HP 는 돌아오지 않는다.**
+ *
+ * GDD §6.2 는 "MP 대신 **침식**이 주 자원. MP는 보조 자원으로 유지" 라고 정해뒀는데,
+ * 실측해보니 정반대였다 — 지하 소모전에서 전투의 35~39%가 **아무도 스킬을 못 쓰는**
+ * 상태로 시작했다 (T-045). MP 가 마르면 남는 것은 기본 공격뿐이고, 그 구간에서
+ * 이 게임은 유물 게임이 아니다.
+ *
+ * 적 하나당 1 은 **가장 작은 알아볼 수 있는 단위**다. 비율로 주면 "MP 1 회복" 같은
+ * 눈에 띄지 않는 값이 나오고, 이보다 크게 줘도 가동률은 더 오르지 않는다(98% 에서 포화).
+ * 전투가 클수록 많이 돌려주는 것도 자연스럽다 — 크게 싸웠으니 크게 돌아온다.
+ *
+ * HP 를 함께 돌려주면 소모전이라는 축 자체가 사라진다. 그건 거점의 몫이다.
+ */
+export const VICTORY_RECOVERY = {
+  mpPerEnemy: 1,
+} as const;
+
 export const BATTLE_TUNING: BattleTuning = {
   turnOrder: TURN_ORDER,
   damage: DAMAGE,

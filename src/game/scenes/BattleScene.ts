@@ -15,13 +15,12 @@ import { chooseCommand } from '../../core/battle/ai.js';
 import { itemBlockReason, type Item } from '../../core/battle/item.js';
 import { erosionThreshold, skillBlockReason, type Skill } from '../../core/battle/skill.js';
 import { createRng } from '../../core/rng/index.js';
-import { BATTLE_TUNING } from '../../data/battle.js';
+import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
 import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markScene, type BattlePhase } from '../domState.js';
 import {
-  gainExp,
   getInventory,
   partyForBattle,
   partySkills,
@@ -29,6 +28,7 @@ import {
   resetParty,
   saveInventory,
   saveParty,
+  settleVictory,
 } from '../partyStore.js';
 import { expForEnemy } from '../../core/progress/level.js';
 import { EXP_REWARD } from '../../data/progression.js';
@@ -366,40 +366,48 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    saveParty(this.state.actors);
-    saveInventory(this.state.inventory);
-    // 쓴 스킬만큼 유물에 숙련도가 쌓인다 (GDD §5.3).
-    recordSkillUses(this.skillUses);
-
     if (this.state.outcome !== 'victory') {
+      // 도망친 전투도 상태는 이어진다. 다만 보상은 없다.
+      saveParty(this.state.actors);
+      saveInventory(this.state.inventory);
+      recordSkillUses(this.skillUses);
       this.message('이탈');
       return;
     }
 
-    this.message(this.awardExp());
+    this.message(this.settleWin());
   }
 
   /**
-   * 경험치를 준다. 화면에 띄울 문구를 돌려준다 (T-044).
+   * 이긴 뒤의 정산. 화면에 띄울 문구를 돌려준다 (T-044, T-046).
    *
-   * **도망친 전투는 주지 않는다.** 주면 도망이 안전한 경험치벌이가 되고,
+   * **도망친 전투는 보상을 주지 않는다.** 주면 도망이 안전한 벌이가 되고,
    * 그러면 조합을 고민할 이유가 사라진다.
    *
-   * 레벨이 오르면 완전 회복된다 — 유적 안에서 회복할 방법이 이것뿐이다 (`partyStore.gainExp`).
+   * 실제 처리는 `partyStore.settleVictory` 한 곳에 있다 — 밸런스 시뮬레이터가 같은 길을
+   * 지나야 게임과 같은 것을 잰다.
    */
-  private awardExp(): string {
-    const defeated = this.state.actors.filter((actor) => actor.side === 'enemy' && !isAlive(actor));
-    const gained = defeated.reduce(
-      (sum) => sum + expForEnemy(this.encounter.level, EXP_REWARD),
-      0,
+  private settleWin(): string {
+    const defeated = this.state.actors.filter(
+      (actor) => actor.side === 'enemy' && !isAlive(actor),
+    ).length;
+    const gained = defeated * expForEnemy(this.encounter.level, EXP_REWARD);
+
+    const result = settleVictory(
+      this.state.actors,
+      this.state.inventory,
+      this.skillUses,
+      defeated,
+      gained,
+      VICTORY_RECOVERY,
     );
 
-    const levelled = gainExp(gained);
-    if (levelled === undefined) return `승리!  경험치 +${gained}`;
-
-    // 레벨이 올랐으면 회복된 상태를 다시 저장한다 — 아래에서 전투 밖으로 이어지는 값이다.
-    saveParty(partyForBattle());
-    return `승리!  경험치 +${gained}   레벨 ${levelled}!  기운을 되찾았다`;
+    const parts = [`승리!  경험치 +${gained}`];
+    if (result.mpRecovered > 0) parts.push(`MP +${result.mpRecovered}`);
+    if (result.levelledTo !== undefined) {
+      parts.push(`레벨 ${result.levelledTo}!  기운을 되찾았다`);
+    }
+    return parts.join('   ');
   }
 
   /** 전투가 끝난 뒤 나갈 곳. 전멸이면 타이틀, 아니면 왔던 자리로 돌아간다. */
