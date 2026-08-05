@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '../../src/core/battle/ai.js';
 import { createBattle, currentActor, isAlive, step } from '../../src/core/battle/index.js';
-import { canUseSkill } from '../../src/core/battle/skill.js';
+import { canUseSkill, isOverloaded } from '../../src/core/battle/skill.js';
 import { expAtLevel, expForEnemy } from '../../src/core/progress/level.js';
 import { createRng, type Rng } from '../../src/core/rng/index.js';
 import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../src/data/battle.js';
 import { rollEncounter } from '../../src/data/encounters.js';
 import type { MapId } from '../../src/data/maps.js';
 import { EXP_REWARD, LEVEL_CURVE } from '../../src/data/progression.js';
+import { CLEANSING } from '../../src/data/facilities.js';
 import {
+  cleanseParty,
   gainExp,
   getInventory,
   partyForBattle,
@@ -79,6 +81,8 @@ interface Run {
   readonly avgLevel: number;
   /** 스킬을 하나라도 쓸 수 있는 상태로 시작한 전투의 비율. */
   readonly skillReadyRate: number;
+  /** 침식으로 유물이 봉인된 파티원이 있는 채로 시작한 전투의 비율. */
+  readonly sealedRate: number;
 }
 
 /** 지금 스킬을 하나라도 쓸 수 있는 파티원 수. MP 가 마르면 0이 된다. */
@@ -89,11 +93,18 @@ function readyCount(): number {
   ).length;
 }
 
-function runAttrition(mapId: MapId, startLevel: number): Run {
+/**
+ * `cleanseEvery` 판마다 거점에 들른다고 본다. 0이면 들르지 않는다.
+ *
+ * 왕복 걸음 수는 세지 않는다 — 거점으로 가는 길은 안전지대를 지나므로 전투가 끼어들지 않고,
+ * 이 측정이 답하려는 것은 "정화가 소모전을 바꾸는가" 이지 "왕복이 얼마나 귀찮은가" 가 아니다.
+ */
+function runAttrition(mapId: MapId, startLevel: number, cleanseEvery = 0): Run {
   const survived: number[] = [];
   const reached: number[] = [];
   let battlesSeen = 0;
   let readyBattles = 0;
+  let sealedBattles = 0;
 
   for (let trial = 0; trial < ATTRITION.trials; trial += 1) {
     resetParty();
@@ -102,8 +113,15 @@ function runAttrition(mapId: MapId, startLevel: number): Run {
     const worldRng = createRng(90_000 + trial);
     let count = 0;
     for (let battle = 0; battle < ATTRITION.battles; battle += 1) {
+      if (cleanseEvery > 0 && battle > 0 && battle % cleanseEvery === 0) {
+        cleanseParty(CLEANSING);
+      }
+
       battlesSeen += 1;
       if (readyCount() > 0) readyBattles += 1;
+      if (partyForBattle().some((m) => isOverloaded(m, BATTLE_TUNING.erosion))) {
+        sealedBattles += 1;
+      }
 
       if (!fight(mapId, worldRng, 9000 + trial * 100 + battle)) break;
       count += 1;
@@ -118,12 +136,14 @@ function runAttrition(mapId: MapId, startLevel: number): Run {
     avgBattles: mean(survived),
     avgLevel: mean(reached),
     skillReadyRate: battlesSeen === 0 ? 0 : readyBattles / battlesSeen,
+    sealedRate: battlesSeen === 0 ? 0 : sealedBattles / battlesSeen,
   };
 }
 
 const describeRun = (run: Run): string =>
   `전멸 ${(run.wipeRate * 100).toFixed(0)}%, 평균 ${run.avgBattles.toFixed(1)}판, ` +
-  `도달 Lv${run.avgLevel.toFixed(1)}, 스킬 가동 ${(run.skillReadyRate * 100).toFixed(0)}%`;
+  `도달 Lv${run.avgLevel.toFixed(1)}, 스킬 가동 ${(run.skillReadyRate * 100).toFixed(0)}%, ` +
+  `봉인 ${(run.sealedRate * 100).toFixed(0)}%`;
 
 describe('시작 지역은 너그럽다', () => {
   const run = runAttrition('ruin-entrance', 1);
@@ -174,6 +194,35 @@ describe('유물 시스템 가동률', () => {
     expect(run.skillReadyRate, describeRun(run)).toBeGreaterThanOrEqual(
       ATTRITION.minSkillReadyRate,
     );
+  });
+});
+
+/**
+ * 침식이 주 자원인가, 그리고 거점이 값을 하는가 (T-047).
+ *
+ * 위의 가동률 불변식과 짝을 이룬다 — 저쪽은 **MP 가 덜 물려야 한다**는 상한이고,
+ * 이쪽은 **침식이 물려야 한다**는 하한이다. 둘이 함께 GDD §6.2 의 자원 구조를 붙든다.
+ */
+describe('침식이 주 자원이다', () => {
+  const bare = runAttrition('ruin-depths', ATTRITION.depthsPreparedLevel);
+
+  it('정화 없이 굴리면 유물이 실제로 봉인된다', () => {
+    // 0에 가까우면 침식은 숫자만 오르내리는 장식이고, 주 자원은 사실상 없는 셈이다.
+    expect(bare.sealedRate, describeRun(bare)).toBeGreaterThanOrEqual(ATTRITION.minSealedRate);
+  });
+
+  it('거점에 들르면 눈에 띄게 줄어든다', () => {
+    // 그러지 않으면 거점까지 걸어올 이유가 없고, 거점이 없는 것과 같아진다.
+    const cleansed = runAttrition(
+      'ruin-depths',
+      ATTRITION.depthsPreparedLevel,
+      ATTRITION.cleanseEvery,
+    );
+
+    expect(
+      cleansed.sealedRate,
+      `정화 없음: ${describeRun(bare)}\n  ${ATTRITION.cleanseEvery}판마다: ${describeRun(cleansed)}`,
+    ).toBeLessThanOrEqual(bare.sealedRate * ATTRITION.cleansedSealedRatio);
   });
 });
 
