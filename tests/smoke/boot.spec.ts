@@ -338,6 +338,59 @@ test('탐색 중 R 로 장착 화면을 열고 제자리로 돌아온다', async
 });
 
 /**
+ * 저장하고, 페이지를 새로 열고, 이어한다 (T-038).
+ *
+ * **세이브는 새로고침을 건너야 의미가 있다.** 같은 세션 안에서만 되돌아오는 것은
+ * 메모리 상태를 복사한 것일 뿐이라, localStorage 를 실제로 거쳤는지 알 수 없다.
+ */
+test('저장한 뒤 새로 열어 이어할 수 있다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await enterOverworld(page);
+
+  // 시작 지점에서 몇 걸음 옮겨 둔다 — 스폰 지점 그대로면 복원됐는지 알 수 없다.
+  await stepKey(page, 'ArrowDown');
+  await stepKey(page, 'ArrowRight');
+  const where = await page.locator('body').getAttribute('data-player');
+  expect(where, '움직이지 않았다').not.toBe('8,6');
+
+  await stepKey(page, 's');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'save');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slots', 'empty,empty,empty');
+
+  await stepKey(page, 'Enter');
+  // 슬롯 상태가 바뀌는 것이 저장됐다는 유일한 증거다 — "저장했다" 알림은 실패해도 뜬다.
+  await expect(page.locator('body')).toHaveAttribute('data-save-slots', 'ok,empty,empty');
+
+  await mkdir(SHOT_DIR, { recursive: true });
+  await page.screenshot({ path: `${SHOT_DIR}/save.png` });
+
+  // 페이지를 통째로 새로 연다. 메모리 상태는 전부 사라진다.
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+
+  await stepKey(page, 'c');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'load');
+
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-player', where ?? '');
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 전투 한 판을 끝까지 진행한다 (T-020).
  *
  * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —

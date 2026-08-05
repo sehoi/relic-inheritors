@@ -11,7 +11,7 @@ import type { Walker } from '../core/world/movement.js';
  * 이건 디버그 편의 기능이 아니라 **자율 검증의 인터페이스다.**
  * 씬이나 상태를 추가하면 여기도 함께 갱신한다.
  */
-export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle', 'relic'] as const;
+export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle', 'relic', 'save'] as const;
 
 export type SceneKey = (typeof SCENE_KEYS)[number];
 
@@ -78,6 +78,23 @@ export function markRelicScreen(state: {
   document.body.dataset['relicCursor'] = state.relic;
   document.body.dataset['resonances'] =
     state.resonances.length === 0 ? 'none' : [...state.resonances].sort().join(',');
+}
+
+/**
+ * 세이브 슬롯 화면 (T-038).
+ *
+ * 슬롯 상태를 노출하는 것이 핵심이다. **저장이 실제로 됐는지는 화면 글자로 알 수 없다** —
+ * "저장했다" 는 알림은 실패해도 띄울 수 있기 때문이다. 슬롯이 `empty` 에서 `ok` 로
+ * 바뀌는 것이 유일하게 믿을 수 있는 신호다.
+ */
+export function markSaveScreen(state: {
+  readonly mode: string;
+  readonly slot: number;
+  readonly states: readonly string[];
+}): void {
+  document.body.dataset['saveMode'] = state.mode;
+  document.body.dataset['saveSlot'] = String(state.slot);
+  document.body.dataset['saveSlots'] = state.states.join(',');
 }
 
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
