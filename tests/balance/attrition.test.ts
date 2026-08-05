@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '../../src/core/battle/ai.js';
 import { createBattle, currentActor, isAlive, step } from '../../src/core/battle/index.js';
+import { canUseSkill } from '../../src/core/battle/skill.js';
 import { expAtLevel, expForEnemy } from '../../src/core/progress/level.js';
 import { createRng, type Rng } from '../../src/core/rng/index.js';
 import { BATTLE_TUNING } from '../../src/data/battle.js';
@@ -71,11 +72,23 @@ interface Run {
   readonly wipeRate: number;
   readonly avgBattles: number;
   readonly avgLevel: number;
+  /** 스킬을 하나라도 쓸 수 있는 상태로 시작한 전투의 비율. */
+  readonly skillReadyRate: number;
+}
+
+/** 지금 스킬을 하나라도 쓸 수 있는 파티원 수. MP 가 마르면 0이 된다. */
+function readyCount(): number {
+  const skills = partySkills();
+  return partyForBattle().filter((member) =>
+    (skills[member.id] ?? []).some((skill) => canUseSkill(member, skill, BATTLE_TUNING.erosion)),
+  ).length;
 }
 
 function runAttrition(mapId: MapId, startLevel: number): Run {
   const survived: number[] = [];
   const reached: number[] = [];
+  let battlesSeen = 0;
+  let readyBattles = 0;
 
   for (let trial = 0; trial < ATTRITION.trials; trial += 1) {
     resetParty();
@@ -84,6 +97,9 @@ function runAttrition(mapId: MapId, startLevel: number): Run {
     const worldRng = createRng(90_000 + trial);
     let count = 0;
     for (let battle = 0; battle < ATTRITION.battles; battle += 1) {
+      battlesSeen += 1;
+      if (readyCount() > 0) readyBattles += 1;
+
       if (!fight(mapId, worldRng, 9000 + trial * 100 + battle)) break;
       count += 1;
     }
@@ -96,11 +112,13 @@ function runAttrition(mapId: MapId, startLevel: number): Run {
     wipeRate: survived.filter((v) => v < ATTRITION.battles).length / ATTRITION.trials,
     avgBattles: mean(survived),
     avgLevel: mean(reached),
+    skillReadyRate: battlesSeen === 0 ? 0 : readyBattles / battlesSeen,
   };
 }
 
 const describeRun = (run: Run): string =>
-  `전멸 ${(run.wipeRate * 100).toFixed(0)}%, 평균 ${run.avgBattles.toFixed(1)}판, 도달 Lv${run.avgLevel.toFixed(1)}`;
+  `전멸 ${(run.wipeRate * 100).toFixed(0)}%, 평균 ${run.avgBattles.toFixed(1)}판, ` +
+  `도달 Lv${run.avgLevel.toFixed(1)}, 스킬 가동 ${(run.skillReadyRate * 100).toFixed(0)}%`;
 
 describe('시작 지역은 너그럽다', () => {
   const run = runAttrition('ruin-entrance', 1);
@@ -128,6 +146,29 @@ describe('다음 층은 단차가 있다', () => {
     // 단차가 벽이면 그건 난이도가 아니라 막다른 길이다.
     const run = runAttrition('ruin-depths', ATTRITION.depthsPreparedLevel);
     expect(run.wipeRate, describeRun(run)).toBeLessThanOrEqual(ATTRITION.maxPreparedWipe);
+  });
+});
+
+/**
+ * 유물 시스템이 실제로 작동하는가 (T-045).
+ *
+ * **능력이 유물에서 나오는 게임에서**(ADR-004) MP 가 마르면 남는 것은 기본 공격뿐이고,
+ * 그 구간에서 이 게임은 유물 게임이 아니다. 승률만 보면 이 문제가 보이지 않는다 —
+ * 기본 공격만으로도 이길 수는 있기 때문이다.
+ */
+describe('유물 시스템 가동률', () => {
+  it('시작 지역에서는 거의 늘 스킬을 쓸 수 있다', () => {
+    const run = runAttrition('ruin-entrance', 1);
+    expect(run.skillReadyRate, describeRun(run)).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('깊은 층에서도 바닥 아래로 내려가지 않는다', () => {
+    // ⚠️ 이 값은 목표가 아니라 바닥이다. 실측 61~65% — 열 판 중 넷은 아무도 스킬을 못 쓴다.
+    // MP 회복 수단이 생기면(T-046) 올려야 한다.
+    const run = runAttrition('ruin-depths', ATTRITION.depthsPreparedLevel);
+    expect(run.skillReadyRate, describeRun(run)).toBeGreaterThanOrEqual(
+      ATTRITION.minSkillReadyRate,
+    );
   });
 });
 
