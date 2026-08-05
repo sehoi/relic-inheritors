@@ -46,6 +46,7 @@ function sample(): SaveData {
     attunement: { 'ember-coil': 15 },
     inventory: { herb: 2 },
     worldRngState: 999,
+    collectedSites: ['pillar-cache'],
   };
 }
 

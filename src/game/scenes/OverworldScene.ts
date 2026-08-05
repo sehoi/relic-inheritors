@@ -16,13 +16,23 @@ import {
 import { blockedByOccupants, occupantInFront } from '../../core/world/interaction.js';
 import { portalAt, type Portal } from '../../core/world/portal.js';
 import { zoneAt, type Zone } from '../../core/world/zone.js';
+import { remainingSites, siteAt, type RelicSite } from '../../core/world/site.js';
+import { sitesForMap } from '../../data/sites.js';
+import { relic } from '../../data/relics.js';
 import {
   advanceCounter,
   startCounter,
   type EncounterCounter,
 } from '../../core/world/encounter.js';
 import { ENCOUNTER_STEPS, rollEncounter } from '../../data/encounters.js';
-import { getInventory, partyForBattle, partySkills, worldRandom } from '../partyStore.js';
+import {
+  collectSite,
+  collected,
+  getInventory,
+  partyForBattle,
+  partySkills,
+  worldRandom,
+} from '../partyStore.js';
 import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import type { RelicEntry } from './RelicScene.js';
@@ -41,7 +51,15 @@ import { loadMap } from '../world/mapRegistry.js';
 import { renderTilemapLayer } from '../world/renderTilemap.js';
 import { TextBox } from '../ui/TextBox.js';
 import { LocationBanner } from '../ui/LocationBanner.js';
-import { markCamera, markDialogue, markMap, markScene, markWalker, markZone } from '../domState.js';
+import {
+  markCamera,
+  markDialogue,
+  markMap,
+  markScene,
+  markSites,
+  markWalker,
+  markZone,
+} from '../domState.js';
 
 /** 한 칸 이동에 걸리는 시간. 이 동안 입력은 무시된다. */
 const STEP_DURATION = 110;
@@ -68,6 +86,8 @@ export class OverworldScene extends Phaser.Scene {
   private npcs: readonly Npc[] = [];
   private portals: readonly Portal[] = [];
   private zones: readonly Zone[] = [];
+  /** 아직 줍지 않은 회수 지점의 표식. 주우면 지운다. */
+  private readonly siteViews = new Map<string, Phaser.GameObjects.Rectangle>();
 
   private playerView!: Phaser.GameObjects.Container;
   private facingPip!: Phaser.GameObjects.Rectangle;
@@ -113,6 +133,14 @@ export class OverworldScene extends Phaser.Scene {
     const world = this.add.container(0, 0);
     world.add(renderTilemapLayer(this, this.map, assetCatalog(), 'ground'));
     for (const portal of this.portals) world.add(this.createPortalView(portal));
+
+    this.siteViews.clear();
+    for (const site of this.remainingSites()) {
+      const view = this.createSiteView(site);
+      this.siteViews.set(site.id, view);
+      world.add(view);
+    }
+
     for (const npc of this.npcs) world.add(this.createNpcView(npc));
 
     this.walker = this.startingWalker();
@@ -126,6 +154,7 @@ export class OverworldScene extends Phaser.Scene {
     this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
     markWalker(this.walker);
     markDialogue(undefined);
+    markSites(this.remainingSites().length);
     this.updateLocation();
     this.updateFacingPip();
     this.followCamera();
@@ -195,6 +224,9 @@ export class OverworldScene extends Phaser.Scene {
         this.stepping = false;
         // 계단이 먼저다. 층을 옮기는 걸음에서 전투가 터지면 어느 층에서 싸우는지 모호해진다.
         if (this.checkPortal()) return;
+        // 회수 지점은 전투보다 먼저 본다. 유물을 줍는 걸음에서 습격당하면
+        // 무엇을 주웠는지 읽기 전에 화면이 넘어간다.
+        if (this.checkSite()) return;
         this.checkEncounter();
       },
     });
@@ -250,6 +282,59 @@ export class OverworldScene extends Phaser.Scene {
 
     this.banner.show(MAP_NAMES[this.mapId], zone?.name, encounters);
     markZone(zone?.id, encounters);
+  }
+
+  // ── 회수 지점 ───────────────────────────────────────────────────────────
+
+  /**
+   * 밟은 자리에 유물이 있으면 줍는다 (GDD §6.1, T-039).
+   *
+   * 주웠으면 `true` — 이번 걸음에서는 전투가 벌어지지 않는다.
+   */
+  private checkSite(): boolean {
+    const site = siteAt(this.remainingSites(), this.walker.position.x, this.walker.position.y);
+    if (site === undefined) return false;
+
+    const gained = collectSite(site.id, site.relicId);
+    if (gained === undefined) return false;
+
+    this.siteViews.get(site.id)?.destroy();
+    this.siteViews.delete(site.id);
+
+    const entry = relic(gained);
+    this.dialogue = openDialogue(
+      {
+        id: `site:${site.id}`,
+        // 유물의 기록을 함께 띄운다 — 유물이 곧 서사 단위다 (GDD §2).
+        lines: [
+          { speaker: '회수', text: `${entry.name} 을(를) 손에 넣었다.` },
+          { text: entry.lore },
+        ],
+      },
+      TEXT_BOX_LAYOUT,
+    );
+    this.textBox.show(currentPage(this.dialogue), isLastPage(this.dialogue));
+    markDialogue(this.dialogue);
+    markSites(this.remainingSites().length);
+    return true;
+  }
+
+  private remainingSites(): readonly RelicSite[] {
+    return remainingSites(sitesForMap(this.mapId), collected());
+  }
+
+  /** 회수 지점 타일이 아직 없어 표식으로 대신한다 (ADR-006). */
+  private createSiteView(site: RelicSite): Phaser.GameObjects.Rectangle {
+    const size = this.map.tileWidth;
+    const marker = this.add.rectangle(
+      site.position.x * size + size / 2,
+      site.position.y * size + size / 2,
+      size - 6,
+      size - 6,
+      0x8a6a2a,
+    );
+    marker.setStrokeStyle(1, 0xd8b46a);
+    return marker;
   }
 
   // ── 층 이동 ─────────────────────────────────────────────────────────────

@@ -34,7 +34,14 @@ function validSave(): Record<string, unknown> {
     attunement: { 'ember-coil': 20 },
     inventory: { herb: 3 },
     worldRngState: 123_456,
+    collectedSites: ['pillar-cache'],
   };
+}
+
+/** v1 세이브 — 회수 지점이라는 개념이 없던 시절. 실제 마이그레이션의 입력이다. */
+function v1Save(): Record<string, unknown> {
+  const { collectedSites: _drop, ...rest } = validSave();
+  return { ...rest, version: 1 };
 }
 
 describe('parseSave', () => {
@@ -189,6 +196,34 @@ describe('migrateSave', () => {
 
     const upgraded = migrateSave({ ...old, version: 1 }, forgetful, 2);
     expect(() => parseSave({ ...upgraded, version: SAVE_VERSION })).toThrow(/worldRngState/);
+  });
+});
+
+describe('v1 → v2 · 회수 지점 (T-039)', () => {
+  it('v1 세이브를 그대로 불러올 수 있다', () => {
+    // 첫 실제 마이그레이션. 여기까지 오는 데 필요한 기제는 T-037 에서 미리 만들어 뒀다.
+    const save = parseSave(v1Save());
+    expect(save.version).toBe(SAVE_VERSION);
+    expect(save.collectedSites).toEqual([]);
+  });
+
+  it('v1 의 나머지 값은 손대지 않는다', () => {
+    const before = v1Save();
+    const save = parseSave(before);
+
+    expect(save.worldRngState).toBe(before['worldRngState']);
+    expect(save.attunement).toEqual(before['attunement']);
+    expect(save.owned).toEqual(before['owned']);
+  });
+
+  it('아무것도 줍지 않은 것으로 본다 (안전한 쪽)', () => {
+    // "전부 주웠다" 로 보면 아직 못 가본 층의 유물을 영영 잃는다.
+    // 다시 주울 수 있는 것은 손해가 아니라 이득이므로 이쪽이 안전하다.
+    expect(parseSave(v1Save()).collectedSites).toEqual([]);
+  });
+
+  it('v2 세이브는 회수 기록을 유지한다', () => {
+    expect(parseSave(validSave()).collectedSites).toEqual(['pillar-cache']);
   });
 });
 

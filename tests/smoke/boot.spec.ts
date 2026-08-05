@@ -338,6 +338,72 @@ test('탐색 중 R 로 장착 화면을 열고 제자리로 돌아온다', async
 });
 
 /**
+ * 회수 지점에서 유물을 줍고, 그 사실이 세이브를 건넌다 (T-039).
+ *
+ * **다시 주울 수 있으면 저장·로드 반복이 유물 무한 획득이 된다.** 주웠다는 사실이
+ * 세이브에 남는지까지 봐야 이 기능이 완성된 것이다.
+ */
+test('회수 지점에서 유물을 줍고, 저장·로드 뒤에도 사라져 있다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  // 회수 지점까지 26걸음이라 인카운터를 끄지 않으면 도중에 전투가 끼어든다.
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+
+  await expect(page.locator('body')).toHaveAttribute('data-sites', '2');
+
+  // 기둥 홀 한가운데(32,8). y=7 복도를 따라가면 NPC 도 계단도 없다.
+  await stepKey(page, 'ArrowDown');
+  for (let i = 0; i < 24; i += 1) await stepKey(page, 'ArrowRight');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '32,7');
+
+  await stepKey(page, 'ArrowDown');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '32,8');
+
+  // 주우면 표식이 하나 줄고 대화가 열린다.
+  await expect(page.locator('body')).toHaveAttribute('data-sites', '1');
+  await expect(page.locator('body')).toHaveAttribute('data-dialogue', /^1\//);
+  await mkdir(SHOT_DIR, { recursive: true });
+  await page.screenshot({ path: `${SHOT_DIR}/site.png` });
+
+  for (let i = 0; i < 6; i += 1) {
+    if ((await page.locator('body').getAttribute('data-dialogue')) === 'closed') break;
+    await stepKey(page, 'Space');
+  }
+
+  // 저장하고 새로 열어 불러온다.
+  await stepKey(page, 's');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slots', /^ok/);
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await stepKey(page, 'c');
+  await stepKey(page, 'Enter');
+
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+  // 다시 놓여 있으면 저장·로드 반복으로 유물을 무한히 얻을 수 있다.
+  await expect(page.locator('body')).toHaveAttribute('data-sites', '1');
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 저장하고, 페이지를 새로 열고, 이어한다 (T-038).
  *
  * **세이브는 새로고침을 건너야 의미가 있다.** 같은 세션 안에서만 되돌아오는 것은

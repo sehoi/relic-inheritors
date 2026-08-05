@@ -70,8 +70,10 @@ let attunement: Attunement = {};
 let inventory: Inventory = INITIAL_INVENTORY;
 let loadout: Loadout | undefined;
 let worldRng: Rng | undefined;
-/** 지닌 유물. 세이브에서 복원되며, 회수 지점(T-039)이 생기면 여기가 늘어난다. */
+/** 지닌 유물. 세이브에서 복원되며, 회수 지점(T-039)이 여기를 늘린다. */
 let owned: readonly string[] = STARTING_RELICS;
+/** 이미 주운 회수 지점. 한 번 주우면 사라져야 한다 (GDD §6.1). */
+let collectedSites: ReadonlySet<string> = new Set();
 
 /**
  * 월드 난수. 인카운터 발생과 조우 구성이 여기서 나온다.
@@ -91,9 +93,26 @@ export function ownedRelics(): readonly string[] {
   return owned;
 }
 
-/** 유물을 새로 얻는다. 이미 지닌 것이면 아무 일도 없다 (회수 지점은 T-039). */
+/** 유물을 새로 얻는다. 이미 지닌 것이면 아무 일도 없다. */
 export function gainRelic(relicId: string): void {
   if (!owned.includes(relicId)) owned = [...owned, relicId];
+}
+
+export function collected(): ReadonlySet<string> {
+  return collectedSites;
+}
+
+/**
+ * 회수 지점을 줍는다. 이미 주웠으면 `undefined`.
+ *
+ * 주웠다는 사실과 유물을 얻는 것을 **한 곳에서** 처리한다. 나눠 두면 언젠가 한쪽만 부르게 되고,
+ * 그러면 유물 없이 사라진 회수 지점이나 무한히 주울 수 있는 유물이 생긴다.
+ */
+export function collectSite(siteId: string, relicId: string): string | undefined {
+  if (collectedSites.has(siteId)) return undefined;
+  collectedSites = new Set([...collectedSites, siteId]);
+  gainRelic(relicId);
+  return relicId;
 }
 
 /**
@@ -261,6 +280,7 @@ export function resetParty(): void {
   worldRng = undefined;
   attunement = {};
   owned = STARTING_RELICS;
+  collectedSites = new Set();
 }
 
 // ── 세이브 (T-037) ────────────────────────────────────────────────────────
@@ -305,6 +325,7 @@ export function captureSave(
     // 시드가 아니라 **상태**를 저장한다. 시드만 저장하면 불러올 때마다 인카운터 수열이
     // 처음부터 다시 시작해, 저장·로드 반복으로 조우를 조작할 수 있다 (ADR-002).
     worldRngState: worldRandom().getState(),
+    collectedSites: [...collectedSites].sort(),
   };
 }
 
@@ -320,6 +341,7 @@ export function restoreSave(save: SaveData): void {
   attunement = { ...save.attunement };
   inventory = { ...save.inventory };
   worldRng = restoreRng(save.worldRngState);
+  collectedSites = new Set(save.collectedSites);
 
   const next: Record<ActorId, Vitals> = {};
   for (const [actorId, saved] of Object.entries(save.party)) {

@@ -21,6 +21,9 @@ import {
 import { NPCS_BY_MAP } from '../../src/data/npcs.js';
 import { PORTALS_BY_MAP } from '../../src/data/portals.js';
 import { ZONES_BY_MAP, zonesForMap } from '../../src/data/zones.js';
+import { SITES_BY_MAP, sitesForMap } from '../../src/data/sites.js';
+import { duplicateRewards, validateSites } from '../../src/core/world/site.js';
+import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
@@ -216,6 +219,57 @@ describe('NPC 배치', () => {
     for (const id of MAP_IDS) {
       const frames = (NPCS_BY_MAP[id] ?? []).map((npc) => npc.tile);
       expect(new Set(frames).size, id).toBe(frames.length);
+    }
+  });
+});
+
+describe('회수 지점 (T-039)', () => {
+  const occupantsOf = (id: MapId): { x: number; y: number }[] => [
+    ...(NPCS_BY_MAP[id] ?? []).map((npc) => npc.position),
+    ...(PORTALS_BY_MAP[id] ?? []).map((portal) => portal.position),
+  ];
+
+  it.each([...MAP_IDS])('%s: 배치가 유효하다', (id) => {
+    // 벽 속·계단 위·NPC 위에 놓이면 영영 못 줍거나 무엇이 발동할지 모호해진다.
+    expect(() =>
+      validateSites(id, mapOf(id), sitesForMap(id), {
+        occupied: occupantsOf(id),
+        knownRelics: Object.keys(RELICS),
+      }),
+    ).not.toThrow();
+  });
+
+  it('같은 유물을 두 곳에서 줍지 않는다', () => {
+    // 두 번째는 아무 일도 일어나지 않아 버그로 보인다.
+    expect(duplicateRewards(SITES_BY_MAP)).toEqual([]);
+  });
+
+  it('시작부터 지닌 유물을 놓아두지 않는다', () => {
+    const redundant = Object.values(SITES_BY_MAP)
+      .flat()
+      .filter((site) => STARTING_RELICS.includes(site.relicId))
+      .map((site) => `${site.id}: ${site.relicId}`);
+
+    expect(redundant, `이미 지닌 유물입니다:\n${redundant.join('\n')}`).toEqual([]);
+  });
+
+  it('회수 지점은 위험 구역에 있다', () => {
+    // 안전지대에 두면 전투를 거치지 않고 유물이 늘어난다.
+    const tooSafe: string[] = [];
+    for (const id of MAP_IDS) {
+      for (const site of sitesForMap(id)) {
+        if (!encountersAt(zonesForMap(id), site.position.x, site.position.y)) {
+          tooSafe.push(`${id}/${site.id}`);
+        }
+      }
+    }
+    expect(tooSafe, `안전지대에 있습니다:\n${tooSafe.join('\n')}`).toEqual([]);
+  });
+
+  it('맵마다 1~2개다 (GDD §6.1)', () => {
+    for (const id of MAP_IDS) {
+      expect(sitesForMap(id).length, id).toBeGreaterThanOrEqual(1);
+      expect(sitesForMap(id).length, id).toBeLessThanOrEqual(2);
     }
   });
 });
