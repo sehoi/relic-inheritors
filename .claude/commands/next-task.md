@@ -58,12 +58,21 @@ description: 백로그 태스크 하나를 구현 → 검증 → PR → 머지�
 - `gh pr checks` 로 CI가 초록인지 확인한다. 빨간 PR은 절대 머지하지 않는다.
 - **PowerShell에는 `&&` 가 없다.** 명령을 줄바꿈으로 나열하면 앞이 실패해도 뒤가 실행된다 — 이건 게이트가 아니다. 반드시 종료 코드를 검사한다:
   ```powershell
+  # timeout 을 1200000 (20분) 이상으로 준다
   gh pr checks <번호> --watch --interval 20
-  if ($?) { gh pr merge <번호> --squash --delete-branch } else { Write-Output "CI 실패 - 머지 중단" }
+  if ($?) { gh pr merge <번호> --squash --delete-branch } else { Write-Output "확인 필요 - 머지 중단" }
+  ```
+  타임아웃으로 끊겼다면 실패가 아니므로, 다음 호출에서 상태만 다시 본다:
+  ```powershell
+  gh pr checks <번호>
+  if ($?) { gh pr merge <번호> --squash --delete-branch } else { Write-Output "아직 진행 중이거나 실패" }
   ```
   (2026-08-04에 이 실수로 빨간 PR #4가 머지되어 main이 깨졌다.)
 - **PR 생성 직후에는 체크가 아직 등록되지 않았을 수 있다.** 그 상태의 `gh pr checks` 는 `no checks reported` 와 함께 실패를 반환한다. 이걸 CI 실패로 오인하면 멀쩡한 태스크가 BLOCKED로 기록된다. **PR 생성과 체크 확인은 같은 명령에 잇지 말고, 별도 호출로 나눈다.** 그래도 `no checks reported` 가 나오면 CI 실패가 아니라 아직 시작 전이므로, 한 번 더 시도한다. 두 번째도 같으면 그때는 워크플로 설정 문제를 의심한다.
   (2026-08-05에 T-009에서 이 오탐이 발생했다.)
+- **`--watch` 대기는 명령 타임아웃을 넉넉히 잡는다 (최소 20분).** CI는 보통 1~2분이지만 러너가 느리면 훨씬 오래 걸린다.
+- **대기가 타임아웃되는 것은 CI 실패가 아니다.** 시간이 다 되면 `--watch` 없이 `gh pr checks <번호>` 로 현재 상태를 한 번 더 확인한 뒤에 판정한다. 아직 `pending` 이면 다시 기다린다. **여기서 BLOCKED로 기록하지 않는다.**
+  (2026-08-05에 T-013의 CI가 11분 6초 걸렸다 — 평소 1분 15초의 9배. 실패가 아니라 러너가 느렸을 뿐이다.)
 - CI 실패 시 원인을 고친다. 2회 연속 실패하면 PR을 draft로 내리고 백로그에 `- [!]` 표시 후 종료.
 - 초록이면 `gh pr merge --squash --delete-branch`
 
