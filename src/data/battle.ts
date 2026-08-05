@@ -52,11 +52,14 @@ export const FLEE: FleeTuning = {
  * 폭주가 오도록 잡은 값이다. T-019 시뮬레이터가 실제 전투 길이에 맞춰 조정한다.
  */
 export const EROSION: ErosionTuning = {
-  threshold: 100,
+  base: 10,
+  // 최대 MP 1당 2.2. 스킬 하나당 (MP 4, 침식 12) 기준으로
+  // "MP 를 3분의 2쯤 쓰면 폭주" 라는 모양이 레벨과 무관하게 유지된다 (ADR-010).
+  perMaxMp: 2.2,
   // 0으로 두지 않는다 — 폭주가 침식을 완전히 씻어내면
   // "일부러 폭주시키고 다시 시작"이 최적 전략이 된다.
   reliefRatio: 0.5,
-  max: 200,
+  maxMultiplier: 2,
 };
 
 /**

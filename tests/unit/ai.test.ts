@@ -31,7 +31,7 @@ const TUNING: BattleTuning = {
     minDamage: 1,
   },
   flee: { baseChance: 0.5, agiFactor: 0.02, minChance: 0.1, maxChance: 0.95 },
-  erosion: { threshold: 100, reliefRatio: 0.5, max: 200 },
+  erosion: { base: 100, perMaxMp: 0, reliefRatio: 0.5, maxMultiplier: 2 },
   ailment: {
     poisonPercent: 0.06,
     paralysisSkipChance: 0,

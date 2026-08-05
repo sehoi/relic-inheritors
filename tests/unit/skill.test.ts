@@ -3,6 +3,8 @@ import type { BattleActor } from '../../src/core/battle/index.js';
 import {
   applySkillCost,
   canUseSkill,
+  erosionCap,
+  erosionThreshold,
   isOverloaded,
   relieveErosion,
   skillBlockReason,
@@ -11,7 +13,11 @@ import {
 } from '../../src/core/battle/skill.js';
 import { SKILLS, skill, skillRegistry } from '../../src/data/skills.js';
 
-const EROSION: ErosionTuning = { threshold: 100, reliefRatio: 0.5, max: 200 };
+/** 최대 MP 20 인 표본 기준 임계 100. perMaxMp 0 으로 두면 고정 임계처럼 읽힌다. */
+const EROSION: ErosionTuning = { base: 100, perMaxMp: 0, reliefRatio: 0.5, maxMultiplier: 2 };
+
+/** 임계가 최대 MP 에 비례하는 실제 설정 (ADR-010). */
+const SCALED: ErosionTuning = { base: 10, perMaxMp: 2.2, reliefRatio: 0.5, maxMultiplier: 2 };
 
 const actor = (overrides: Partial<BattleActor> = {}): BattleActor => ({
   id: 'hero',
@@ -70,7 +76,7 @@ describe('applySkillCost', () => {
 
   it('침식은 상한을 넘지 않는다', () => {
     const heavy: Skill = { ...cheap, erosion: 500 };
-    expect(applySkillCost(actor(), heavy, EROSION).erosion).toBe(EROSION.max);
+    expect(applySkillCost(actor(), heavy, EROSION).erosion).toBe(200); // 임계 100 × 배수 2
   });
 
   it('MP 는 음수가 되지 않는다', () => {
@@ -94,6 +100,45 @@ describe('relieveErosion', () => {
   it('해소 후에는 폭주 상태가 풀린다', () => {
     const relieved = relieveErosion(actor({ erosion: 100 }), EROSION);
     expect(isOverloaded(relieved, EROSION)).toBe(false);
+  });
+});
+
+describe('침식 임계 스케일링 (ADR-010)', () => {
+  const withMp = (maxMp: number): BattleActor => ({
+    ...actor(),
+    stats: { ...actor().stats, maxMp },
+  });
+
+  it('최대 MP 가 클수록 임계가 높다', () => {
+    expect(erosionThreshold(withMp(20), SCALED)).toBeCloseTo(54, 5);
+    expect(erosionThreshold(withMp(50), SCALED)).toBeCloseTo(120, 5);
+    expect(erosionThreshold(withMp(90), SCALED)).toBeCloseTo(208, 5);
+  });
+
+  it('"MP 를 얼마나 쓰면 폭주하는가" 가 레벨과 크게 달라지지 않는다', () => {
+    // 이게 이 변경의 목적이다 (ADR-010). 고정 임계였을 때는 이 비율이
+    // 저레벨 1.0(폭주 없음)에서 고레벨 0.4 이하로 무너졌다.
+    //
+    // 정확히 일정하지는 않다 — `base` 항이 저레벨의 임계를 일부러 끌어올려
+    // 초반을 덜 가혹하게 만든다. 중요한 것은 **경향이 뒤집히지 않는 것**이다.
+    const pressure = (maxMp: number): number =>
+      erosionThreshold(withMp(maxMp), SCALED) / cheap.erosion / (maxMp / cheap.mpCost);
+
+    const ratios = [20, 50, 90].map(pressure);
+    const spread = Math.max(...ratios) - Math.min(...ratios);
+
+    expect(spread, `레벨별 비율: ${ratios.map((r) => r.toFixed(2)).join(' / ')}`).toBeLessThan(0.25);
+    // 어느 레벨에서도 "MP 를 다 쓰기 전에 폭주" 라는 성질은 유지된다.
+    for (const ratio of ratios) expect(ratio).toBeLessThan(1);
+  });
+
+  it('상한도 임계에 비례한다', () => {
+    expect(erosionCap(withMp(50), SCALED)).toBeCloseTo(240, 5);
+  });
+
+  it('perMaxMp 0 이면 고정 임계처럼 동작한다', () => {
+    expect(erosionThreshold(withMp(20), EROSION)).toBe(100);
+    expect(erosionThreshold(withMp(90), EROSION)).toBe(100);
   });
 });
 

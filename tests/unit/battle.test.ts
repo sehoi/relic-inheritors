@@ -34,7 +34,8 @@ const TUNING: BattleTuning = {
   turnOrder: { jitter: 0.15 },
   damage: FLAT_DAMAGE,
   flee: { baseChance: 0.5, agiFactor: 0.02, minChance: 0.1, maxChance: 0.95 },
-  erosion: { threshold: 100, reliefRatio: 0.5, max: 200 },
+  // 임계를 고정값으로 두려면 perMaxMp 를 0 으로 준다. 전투 흐름 검사에는 그편이 읽기 쉽다.
+  erosion: { base: 100, perMaxMp: 0, reliefRatio: 0.5, maxMultiplier: 2 },
   // 상태이상 확률은 0으로 둔다. 전투 흐름을 볼 때 무작위 개입이 섞이면 검사가 어렵다.
   ailment: {
     poisonPercent: 0.06,
