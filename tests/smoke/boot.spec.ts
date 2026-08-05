@@ -396,6 +396,68 @@ test('거점으로 나가 정화소를 쓸 수 있다', async ({ page }) => {
 });
 
 /**
+ * 거점에서 물건을 산다 (T-041b).
+ *
+ * **샀는지는 지님 개수와 은편으로만 확실히 알 수 있다** — "샀다" 알림은 실패해도 띄울 수 있다.
+ */
+test('거점 상점이 열리고 은편이 모자라면 거절한다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  // 새로 시작하면 은편이 0이다. **거절하는 쪽이 검증하기 쉽고 더 중요하다** —
+  // 살 수 있을 때 사지는 것은 단위 테스트가 보고, 여기서는 화면·판정·소지품이
+  // 실제로 이어져 있는지를 본다. 전투로 은편을 벌게 하면 승패에 매인 불안정한 테스트가 된다.
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+
+  // 야영지 구석(2,2)이 거점으로 나가는 길이다. 스폰 (8,6) 에서.
+  for (let i = 0; i < 6; i += 1) await stepKey(page, 'ArrowLeft');
+  for (let i = 0; i < 4; i += 1) await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'haven', { timeout: 10_000 });
+
+  // 도착 (35,12) → 상점 (28,16) 앞. 시설은 길을 막으므로 (29,16) 에서 멈춘다.
+  for (let i = 0; i < 6; i += 1) await stepKey(page, 'ArrowLeft');
+  for (let i = 0; i < 4; i += 1) await stepKey(page, 'ArrowDown');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '29,16');
+
+  await stepKey(page, 'ArrowLeft');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '29,16');
+  await stepKey(page, 'Space');
+
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'shop', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-shop-coins', '0');
+  await page.screenshot({ path: `${SHOT_DIR}/shop.png` });
+
+  // 은편 0으로 사려 하면 거절당하고 지님 개수가 그대로다.
+  const owned = await page.locator('body').getAttribute('data-shop-owned');
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-shop-owned', owned ?? '0');
+  await expect(page.locator('body')).toHaveAttribute('data-shop-coins', '0');
+
+  // 커서가 움직이고 닫힌다.
+  const first = await page.locator('body').getAttribute('data-shop-item');
+  await stepKey(page, 'ArrowDown');
+  expect(await page.locator('body').getAttribute('data-shop-item')).not.toBe(first);
+
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', {
+    timeout: 10_000,
+  });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 회수 지점에서 유물을 줍고, 그 사실이 세이브를 건넌다 (T-039).
  *
  * **다시 주울 수 있으면 저장·로드 반복이 유물 무한 획득이 된다.** 주웠다는 사실이

@@ -11,7 +11,15 @@ import type { Walker } from '../core/world/movement.js';
  * 이건 디버그 편의 기능이 아니라 **자율 검증의 인터페이스다.**
  * 씬이나 상태를 추가하면 여기도 함께 갱신한다.
  */
-export const SCENE_KEYS = ['boot', 'title', 'overworld', 'battle', 'relic', 'save'] as const;
+export const SCENE_KEYS = [
+  'boot',
+  'title',
+  'overworld',
+  'battle',
+  'relic',
+  'save',
+  'shop',
+] as const;
 
 export type SceneKey = (typeof SCENE_KEYS)[number];
 
@@ -105,6 +113,22 @@ export function markSaveScreen(state: {
  */
 export function markSites(remaining: number): void {
   document.body.dataset['sites'] = String(remaining);
+}
+
+/**
+ * 상점 (T-041b).
+ *
+ * **샀는지는 지님 개수와 은편으로만 확실히 알 수 있다** — "샀다" 알림은 실패해도 띄울 수 있다.
+ * 세이브 화면에서 배운 것과 같다.
+ */
+export function markShop(state: {
+  readonly item: string;
+  readonly coins: number;
+  readonly owned: number;
+}): void {
+  document.body.dataset['shopItem'] = state.item;
+  document.body.dataset['shopCoins'] = String(state.coins);
+  document.body.dataset['shopOwned'] = String(state.owned);
 }
 
 /** 파티 레벨 (T-044). 전투를 이겨 레벨이 올랐는지 스모크가 이걸로 판정한다. */

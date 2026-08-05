@@ -296,9 +296,12 @@ describe('거점 시설 (T-040)', () => {
     ).not.toThrow();
   });
 
-  it('거점에 정화소가 있다', () => {
-    // GDD §6.4 의 최소 조건. 없으면 거점이 그냥 빈 방이다.
-    expect(facilitiesForMap('haven').some((f) => f.kind === 'cleansing')).toBe(true);
+  it('거점에 GDD §6.4 의 시설이 모두 있다', () => {
+    // 정화소·여관·상점. 없으면 거점이 그냥 빈 방이다.
+    const kinds = new Set(facilitiesForMap('haven').map((f) => f.kind));
+    for (const kind of ['cleansing', 'inn', 'shop'] as const) {
+      expect(kinds.has(kind), kind).toBe(true);
+    }
   });
 
   it('거점은 통째로 안전지대다', () => {
