@@ -1,0 +1,531 @@
+import Phaser from 'phaser';
+import {
+  createBattle,
+  currentActor,
+  isAlive,
+  step,
+  validTargets,
+  type ActorId,
+  type BattleActor,
+  type BattleEvent,
+  type BattleState,
+  type Command,
+} from '../../core/battle/index.js';
+import { chooseCommand } from '../../core/battle/ai.js';
+import { itemBlockReason, type Item } from '../../core/battle/item.js';
+import { skillBlockReason, type Skill } from '../../core/battle/skill.js';
+import { createRng } from '../../core/rng/index.js';
+import { BATTLE_TUNING } from '../../data/battle.js';
+import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
+import { item as itemById } from '../../data/items.js';
+import { markBattle, markScene, type BattlePhase } from '../domState.js';
+import { Gauge } from '../ui/Gauge.js';
+
+/** 이벤트 하나를 보여주는 시간. 너무 빠르면 무슨 일이 있었는지 읽을 수 없다. */
+const EVENT_DELAY = 260;
+
+export interface BattleEntry {
+  readonly encounter?: Encounter;
+  readonly seed?: number;
+}
+
+interface PendingAction {
+  readonly kind: 'attack' | 'skill' | 'item';
+  readonly skill?: Skill;
+  readonly item?: Item;
+}
+
+/**
+ * 전투 화면.
+ *
+ * **판정은 하나도 하지 않는다.** 커맨드를 만들어 `core/battle` 에 넘기고,
+ * 돌아온 이벤트 로그를 순서대로 재생할 뿐이다. 이 분리 덕분에 같은 전투를
+ * 시뮬레이터가 브라우저 없이 수백 번 돌릴 수 있다 (ADR-005).
+ */
+export class BattleScene extends Phaser.Scene {
+  private encounter!: Encounter;
+  private state!: BattleState;
+
+  private phase: BattlePhase = 'command';
+  private pending: PendingAction | undefined;
+  private menuIndex = 0;
+  private targets: readonly BattleActor[] = [];
+
+  private enemyViews = new Map<ActorId, Phaser.GameObjects.Image>();
+  private enemyLabels = new Map<ActorId, Phaser.GameObjects.Text>();
+  private partyGauges = new Map<ActorId, { hp: Gauge; mp: Gauge; erosion: Gauge }>();
+  private partyLabels = new Map<ActorId, Phaser.GameObjects.Text>();
+  private menuText!: Phaser.GameObjects.Text;
+  private messageText!: Phaser.GameObjects.Text;
+  private cursor!: Phaser.GameObjects.Text;
+
+  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+
+  constructor() {
+    super('battle');
+  }
+
+  init(entry?: BattleEntry): void {
+    this.encounter = entry?.encounter ?? ruinEncounter(8);
+    this.state = createBattle(
+      this.encounter.actors,
+      entry?.seed ?? 1,
+      BATTLE_TUNING,
+      this.encounter.inventory,
+    );
+  }
+
+  create(): void {
+    markScene('battle');
+
+    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x10131b).setOrigin(0, 0);
+    this.buildEnemies();
+    this.buildPartyPanel();
+
+    this.messageText = this.add
+      .text(this.scale.width / 2, 132, '', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#e8e3d3',
+        align: 'center',
+      })
+      .setOrigin(0.5, 0);
+
+    this.add.rectangle(332, 168, 140, 94, 0x0b0c10).setOrigin(0, 0).setStrokeStyle(1, 0x6f7b8a);
+    this.menuText = this.add.text(346, 176, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: '#e8e3d3',
+      lineSpacing: 3,
+    });
+    this.cursor = this.add.text(336, 176, '>', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: '#c8a15a',
+    });
+
+    this.bindKeys();
+    this.beginTurn();
+  }
+
+  // ── 화면 구성 ───────────────────────────────────────────────────────────
+
+  private buildEnemies(): void {
+    const enemies = this.state.actors.filter((a) => a.side === 'enemy');
+    const gap = this.scale.width / (enemies.length + 1);
+
+    enemies.forEach((enemy, i) => {
+      const view = this.add
+        .image(gap * (i + 1), 62, 'tiles-dungeon', mobTile(enemy.id))
+        .setScale(2);
+      this.enemyViews.set(enemy.id, view);
+      this.enemyLabels.set(
+        enemy.id,
+        this.add
+          .text(gap * (i + 1), 84, enemy.name, {
+            fontFamily: 'monospace',
+            fontSize: '9px',
+            color: '#9aa7b8',
+          })
+          .setOrigin(0.5, 0),
+      );
+    });
+  }
+
+  private buildPartyPanel(): void {
+    const party = this.state.actors.filter((a) => a.side === 'party');
+    this.add.rectangle(8, 168, 316, 94, 0x0b0c10).setOrigin(0, 0).setStrokeStyle(1, 0x6f7b8a);
+
+    party.forEach((member, i) => {
+      const top = 176 + i * 42;
+      this.partyLabels.set(
+        member.id,
+        this.add.text(18, top, member.name, {
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          color: '#e8e3d3',
+        }),
+      );
+
+      this.partyGauges.set(member.id, {
+        hp: new Gauge(this, 92, top + 1, 88, 7, 0xb0304a),
+        mp: new Gauge(this, 92, top + 11, 88, 5, 0x4a72b0),
+        // 침식은 찰수록 나쁘다. 붉은 보라로 다른 축임을 알린다.
+        erosion: new Gauge(this, 212, top + 1, 96, 7, 0x8a4ab0),
+      });
+
+      // 막대 색만으로는 무엇인지 알 수 없다. 좁은 자리라 두 글자로 줄인다.
+      for (const [label, offsetY, color] of [
+        ['HP', 0, '#b0304a'],
+        ['MP', 10, '#4a72b0'],
+      ] as const) {
+        this.add
+          .text(88, top + offsetY, label, {
+            fontFamily: 'monospace',
+            fontSize: '8px',
+            color,
+          })
+          .setOrigin(1, 0);
+      }
+
+      this.add
+        .text(208, top, 'ER', { fontFamily: 'monospace', fontSize: '8px', color: '#8a4ab0' })
+        .setOrigin(1, 0);
+    });
+
+    this.refreshPanel();
+  }
+
+  private refreshPanel(): void {
+    for (const [id, gauges] of this.partyGauges) {
+      const actor = this.state.actors.find((a) => a.id === id);
+      if (actor === undefined) continue;
+
+      gauges.hp.setRatio(actor.hp / actor.stats.maxHp);
+      gauges.mp.setRatio(actor.stats.maxMp === 0 ? 0 : actor.mp / actor.stats.maxMp);
+      gauges.erosion.setRatio(actor.erosion / BATTLE_TUNING.erosion.threshold);
+
+      const label = this.partyLabels.get(id);
+      label?.setColor(isAlive(actor) ? '#e8e3d3' : '#6f7b8a');
+    }
+
+    for (const [id, view] of this.enemyViews) {
+      const actor = this.state.actors.find((a) => a.id === id);
+      const alive = actor !== undefined && isAlive(actor);
+      view.setVisible(alive);
+      // 이름표도 함께 감춘다. 사라진 적의 이름만 남아 있으면 아직 있는 것처럼 보인다.
+      this.enemyLabels.get(id)?.setVisible(alive);
+    }
+  }
+
+  // ── 턴 진행 ─────────────────────────────────────────────────────────────
+
+  private beginTurn(): void {
+    if (this.state.outcome !== 'ongoing') {
+      this.finish();
+      return;
+    }
+
+    const acting = currentActor(this.state);
+    if (acting === undefined) {
+      this.finish();
+      return;
+    }
+
+    if (acting.side === 'enemy') {
+      this.setPhase('playing');
+      this.time.delayedCall(EVENT_DELAY, () => this.runEnemyTurn(acting.id));
+      return;
+    }
+
+    this.pending = undefined;
+    this.menuIndex = 0;
+    this.setPhase('command');
+    this.message(`${acting.name}의 차례`);
+    this.renderMenu();
+  }
+
+  private runEnemyTurn(actorId: ActorId): void {
+    const profile = this.encounter.profiles[actorId];
+    if (profile === undefined) {
+      this.apply({ type: 'pass', actor: actorId });
+      return;
+    }
+    // AI 용 난수를 전투 상태와 분리한다 — 같은 스트림을 쓰면 재현이 흔들린다.
+    const rng = createRng(this.state.rngState ^ 0x5bf0_3635);
+    this.apply(chooseCommand(this.state, actorId, profile, rng, BATTLE_TUNING));
+  }
+
+  private apply(command: Command): void {
+    const result = step(this.state, command, BATTLE_TUNING);
+    this.state = result.state;
+    this.setPhase('playing');
+    this.playEvents([...result.events]);
+  }
+
+  /** 이벤트를 하나씩 보여준다. 한꺼번에 반영하면 무슨 일이 있었는지 알 수 없다. */
+  private playEvents(queue: BattleEvent[]): void {
+    const event = queue.shift();
+    if (event === undefined) {
+      this.refreshPanel();
+      this.beginTurn();
+      return;
+    }
+
+    const text = this.describe(event);
+    if (text !== undefined) this.message(text);
+    if (event.type === 'damage') this.popDamage(event.target, event.amount, event.critical);
+
+    this.refreshPanel();
+    this.time.delayedCall(text === undefined ? 0 : EVENT_DELAY, () => this.playEvents(queue));
+  }
+
+  private describe(event: BattleEvent): string | undefined {
+    const name = (id: ActorId): string =>
+      this.state.actors.find((a) => a.id === id)?.name ?? id;
+
+    switch (event.type) {
+      case 'damage': {
+        const mark = event.elementMod > 1 ? ' 약점!' : event.elementMod < 1 ? ' 저항…' : '';
+        return `${name(event.target)}에게 ${event.amount}${event.critical ? ' 치명타!' : ''}${mark}`;
+      }
+      case 'heal':
+        return `${name(event.target)} HP +${event.amount}`;
+      case 'death':
+        return `${name(event.actor)} 쓰러짐`;
+      case 'revive':
+        return `${name(event.actor)} 되살아남`;
+      case 'guard':
+        return `${name(event.actor)} 방어 태세`;
+      case 'skillUsed':
+        return `${name(event.actor)}: ${event.skill}`;
+      case 'itemUsed':
+        return `${name(event.actor)} → ${event.item}`;
+      case 'overload':
+        return `${name(event.actor)} 침식 폭주!`;
+      case 'ailmentApplied':
+        return `${name(event.actor)} ${event.kind}`;
+      case 'ailmentBlocked':
+        return `${name(event.actor)} 움직이지 못한다`;
+      case 'ailmentDamage':
+        return `${name(event.actor)} ${event.kind} ${event.amount}`;
+      case 'flee':
+        return event.success ? '도망쳤다!' : '도망칠 수 없었다';
+      case 'battleEnd':
+        return event.outcome === 'victory' ? '승리!' : event.outcome === 'fled' ? '이탈' : '전멸…';
+      default:
+        return undefined;
+    }
+  }
+
+  private popDamage(targetId: ActorId, amount: number, critical: boolean): void {
+    const view = this.enemyViews.get(targetId);
+    const x = view?.x ?? 100;
+    const y = view?.y ?? 190;
+
+    const popup = this.add
+      .text(x, y, String(amount), {
+        fontFamily: 'monospace',
+        fontSize: critical ? '15px' : '12px',
+        color: critical ? '#f2d16b' : '#e8e3d3',
+      })
+      .setOrigin(0.5);
+
+    this.tweens.add({
+      targets: popup,
+      y: y - 18,
+      alpha: 0,
+      duration: 520,
+      onComplete: () => popup.destroy(),
+    });
+  }
+
+  private finish(): void {
+    this.setPhase('over', this.state.outcome);
+    this.message(this.state.outcome === 'victory' ? '승리!' : this.state.outcome === 'fled' ? '이탈' : '전멸…');
+    this.renderMenu();
+  }
+
+  // ── 메뉴 ────────────────────────────────────────────────────────────────
+
+  private menuEntries(): readonly string[] {
+    const acting = currentActor(this.state);
+
+    switch (this.phase) {
+      case 'command':
+        return ['공격', '스킬', '아이템', '방어', '도망'];
+      case 'skill':
+        return this.skillsOf(acting).map((s) => `${s.name} (${s.mpCost})`);
+      case 'item':
+        return this.itemEntries().map(([entry, count]) => `${entry.name} x${count}`);
+      case 'target':
+        return this.targets.map((t) => t.name);
+      default:
+        return [];
+    }
+  }
+
+  private skillsOf(actor: BattleActor | undefined): readonly Skill[] {
+    if (actor === undefined) return [];
+    return this.encounter.partySkills[actor.id] ?? [];
+  }
+
+  private itemEntries(): readonly (readonly [Item, number])[] {
+    return Object.entries(this.state.inventory)
+      .filter(([, count]) => count > 0)
+      .map(([id, count]) => [itemById(id), count] as const);
+  }
+
+  private renderMenu(): void {
+    const entries = this.menuEntries();
+    this.menuText.setText(entries.join('\n'));
+    this.cursor.setVisible(entries.length > 0 && this.phase !== 'playing' && this.phase !== 'over');
+    this.cursor.setY(176 + this.menuIndex * 14);
+  }
+
+  private setPhase(phase: BattlePhase, outcome?: string): void {
+    this.phase = phase;
+    markBattle(phase, outcome);
+  }
+
+  private message(text: string): void {
+    this.messageText.setText(text);
+  }
+
+  // ── 입력 ────────────────────────────────────────────────────────────────
+
+  private bindKeys(): void {
+    const keyboard = this.input.keyboard;
+    if (keyboard === null) {
+      this.keys = {};
+      return;
+    }
+    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
+    this.keys = {
+      up: key('UP'),
+      down: key('DOWN'),
+      confirm: key('ENTER'),
+      confirm2: key('SPACE'),
+      cancel: key('ESC'),
+    };
+  }
+
+  private pressed(name: string): boolean {
+    const key = this.keys[name];
+    return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
+  }
+
+  override update(): void {
+    if (this.phase === 'playing') return;
+
+    if (this.phase === 'over') {
+      if (this.pressed('confirm') || this.pressed('confirm2')) this.scene.start('title');
+      return;
+    }
+
+    const entries = this.menuEntries();
+    if (entries.length === 0) {
+      // 고를 것이 없으면(스킬도 아이템도 없음) 커맨드로 돌아간다.
+      if (this.phase !== 'command') this.backToCommand();
+      return;
+    }
+
+    if (this.pressed('up')) {
+      this.menuIndex = (this.menuIndex + entries.length - 1) % entries.length;
+      this.renderMenu();
+    }
+    if (this.pressed('down')) {
+      this.menuIndex = (this.menuIndex + 1) % entries.length;
+      this.renderMenu();
+    }
+    if (this.pressed('cancel') && this.phase !== 'command') this.backToCommand();
+    if (this.pressed('confirm') || this.pressed('confirm2')) this.confirm();
+  }
+
+  private backToCommand(): void {
+    this.pending = undefined;
+    this.menuIndex = 0;
+    this.setPhase('command');
+    this.renderMenu();
+  }
+
+  private confirm(): void {
+    const acting = currentActor(this.state);
+    if (acting === undefined) return;
+
+    switch (this.phase) {
+      case 'command':
+        this.chooseCommandEntry(acting);
+        break;
+
+      case 'skill': {
+        const chosen = this.skillsOf(acting)[this.menuIndex];
+        if (chosen === undefined) return;
+        const blocked = skillBlockReason(acting, chosen, BATTLE_TUNING.erosion);
+        if (blocked !== undefined) {
+          this.message(blocked);
+          return;
+        }
+        this.pending = { kind: 'skill', skill: chosen };
+        this.enterTargeting(validTargets(this.state, acting.id));
+        break;
+      }
+
+      case 'item': {
+        const entry = this.itemEntries()[this.menuIndex];
+        if (entry === undefined) return;
+        this.pending = { kind: 'item', item: entry[0] };
+        this.enterTargeting(this.state.actors.filter((a) => a.side === 'party'));
+        break;
+      }
+
+      case 'target':
+        this.commitTarget(acting);
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  private chooseCommandEntry(acting: BattleActor): void {
+    switch (this.menuIndex) {
+      case 0:
+        this.pending = { kind: 'attack' };
+        this.enterTargeting(validTargets(this.state, acting.id));
+        break;
+      case 1:
+        this.menuIndex = 0;
+        this.setPhase('skill');
+        this.renderMenu();
+        break;
+      case 2:
+        this.menuIndex = 0;
+        this.setPhase('item');
+        this.renderMenu();
+        break;
+      case 3:
+        this.apply({ type: 'guard', actor: acting.id });
+        break;
+      case 4:
+        this.apply({ type: 'flee', actor: acting.id });
+        break;
+      default:
+        break;
+    }
+  }
+
+  private enterTargeting(targets: readonly BattleActor[]): void {
+    if (targets.length === 0) {
+      this.backToCommand();
+      return;
+    }
+    this.targets = targets;
+    this.menuIndex = 0;
+    this.setPhase('target');
+    this.renderMenu();
+  }
+
+  private commitTarget(acting: BattleActor): void {
+    const target = this.targets[this.menuIndex];
+    const action = this.pending;
+    if (target === undefined || action === undefined) return;
+
+    if (action.kind === 'attack') {
+      this.apply({ type: 'attack', actor: acting.id, target: target.id });
+      return;
+    }
+    if (action.kind === 'skill' && action.skill !== undefined) {
+      this.apply({ type: 'skill', actor: acting.id, target: target.id, skill: action.skill });
+      return;
+    }
+    if (action.kind === 'item' && action.item !== undefined) {
+      const blocked = itemBlockReason(this.state.inventory, action.item, target);
+      if (blocked !== undefined) {
+        this.message(blocked);
+        return;
+      }
+      this.apply({ type: 'item', actor: acting.id, target: target.id, item: action.item });
+    }
+  }
+}
