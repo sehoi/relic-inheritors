@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { equip, equippedBy, unequip } from '../../src/core/relic/index.js';
 import {
+  currentResonances,
   getLoadout,
   ownedRelics,
   partyForBattle,
@@ -10,6 +11,7 @@ import {
   setLoadout,
 } from '../../src/game/partyStore.js';
 import { relic } from '../../src/data/relics.js';
+import { resonance } from '../../src/data/resonances.js';
 
 /**
  * 유물이 능력의 출처가 되는지 확인한다 (ADR-004).
@@ -88,6 +90,26 @@ describe('partyStore', () => {
     const after = partyForBattle().find((m) => m.id === 'vanguard');
 
     expect(after?.mp).toBe(after?.stats.maxMp);
+  });
+
+  it('공명이 발동하고 파티 전원에게 붙는다', () => {
+    // 시작 배분은 잿불 고리(ember) + 돌의 봉인(stone) → `묻어둔 불` 발동.
+    expect(currentResonances().map((r) => r.id)).toEqual(['banked-fire']);
+
+    const withResonance = partyForBattle();
+
+    // 조건을 깨면 공명이 사라지고 보정도 함께 사라진다.
+    setLoadout(unequip(getLoadout(), 'caster', 0));
+    expect(currentResonances()).toEqual([]);
+    const without = partyForBattle();
+
+    const mods = resonance('banked-fire').statMods;
+    for (const member of withResonance) {
+      const bare = without.find((m) => m.id === member.id);
+      if (member.id === 'caster') continue; // 유물 자체를 뺐으므로 다른 차이가 섞인다
+      expect(member.stats.atk - (bare?.stats.atk ?? 0), member.id).toBe(mods.atk);
+      expect(member.stats.def - (bare?.stats.def ?? 0), member.id).toBe(mods.def);
+    }
   });
 
   it('전멸 후 초기화하면 로드아웃과 상태가 되돌아간다', () => {
