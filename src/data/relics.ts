@@ -195,8 +195,24 @@ export function relic(id: string): Relic {
   return relicRegistry.get(id);
 }
 
-/** 시작 시 지니고 있는 유물. M4 에서 세이브·획득이 붙으면 이 자리가 바뀐다. */
-export const STARTING_RELICS: readonly string[] = ['ember-coil', 'stone-seal'];
+/**
+ * 시작 시 지니고 있는 유물. M4 에서 세이브·획득이 붙으면 이 자리가 바뀐다.
+ *
+ * **슬롯 수(4)보다 많아야 한다.** 지닌 유물이 슬롯 이하면 전부 끼는 것이 유일한 답이고,
+ * 그러면 장착 화면(T-029)에 고를 것이 없다. 지금은 회수 지점이 없어 여기서 쥐여주지만,
+ * 진짜 답은 유적에서 주워 모으는 것이다.
+ *
+ * 등급을 섞어 담는다 — 낮은 등급은 안전하고 높은 등급은 세지만 빨리 탄다.
+ * 그 선택이 첫 화면부터 성립해야 조합이 게임의 중심이라는 말이 사실이 된다.
+ */
+export const STARTING_RELICS: readonly string[] = [
+  'ember-coil',
+  'stone-seal',
+  'tide-pearl',
+  'rot-idol',
+  'gale-fang',
+  'sundering-core',
+];
 
 /**
  * 각인 성장 설정 (GDD §5.3).

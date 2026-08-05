@@ -84,6 +84,16 @@ export function ownedRelics(): readonly string[] {
 }
 
 /**
+ * 파티 구성원. 장착 화면(T-029)이 누구에게 슬롯이 있는지 알아야 한다.
+ *
+ * 보정이 붙지 않은 형태를 돌려준다 — 슬롯 주인을 묻는 자리에 계산된 스탯은 필요 없고,
+ * 필요해지는 순간 `partyForBattle()` 이 있다.
+ */
+export function partyMembers(): readonly BattleActor[] {
+  return basePartyMembers();
+}
+
+/**
  * 처음에는 가진 유물을 **한 명씩 돌아가며** 나눠 준다. 장착 UI 는 T-029.
  *
  * 한 사람에게 몰아주지 않는 이유는, 유물이 능력의 출처라서(ADR-004) 몰아주면

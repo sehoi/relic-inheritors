@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { equip, equippedBy, unequip } from '../../src/core/relic/index.js';
+import {
+  SLOTS_PER_MEMBER,
+  activesOf,
+  equip,
+  equippedBy,
+  unequip,
+} from '../../src/core/relic/index.js';
 import {
   currentResonances,
   getAttunement,
@@ -26,23 +32,34 @@ describe('partyStore', () => {
     resetParty();
   });
 
-  it('처음에는 가진 유물이 순서대로 끼워져 있다', () => {
-    const loadout = getLoadout();
-    const equipped = Object.values(loadout).flat().filter(Boolean);
-    expect(equipped).toEqual([...ownedRelics()]);
+  it('처음에는 슬롯이 빠짐없이 채워져 있다', () => {
+    // 지닌 유물이 슬롯보다 많으므로(T-029) 전부 끼워지지는 않는다.
+    // 중요한 것은 **빈 슬롯 없이 시작한다**는 것 — 빈 슬롯으로 시작하면 첫 전투가 허수아비다.
+    const equipped = Object.values(getLoadout()).flat().filter(Boolean);
+    expect(equipped).toHaveLength(2 * SLOTS_PER_MEMBER);
+    expect(new Set(equipped).size, '같은 유물이 두 번 끼워져 있다').toBe(equipped.length);
+    for (const id of equipped) expect(ownedRelics()).toContain(id);
   });
 
   it('스킬이 장착 유물에서 나온다', () => {
-    const skills = partySkills();
-    const vanguardSkills = skills['vanguard'] ?? [];
+    const holding = equippedBy(getLoadout(), 'vanguard');
+    const expected = activesOf(
+      holding.map((id) => relic(id)),
+      relicRanks(),
+    ).map((s) => s.id);
 
-    // 기본 로드아웃에서 vanguard 는 ember-coil 을 낀다 → ember-lash 를 쓸 수 있다.
-    expect(vanguardSkills.map((s) => s.id)).toEqual(['ember-lash']);
+    expect(expected.length, 'vanguard 가 아무 유물도 끼지 않았다').toBeGreaterThan(0);
+    expect((partySkills()['vanguard'] ?? []).map((s) => s.id)).toEqual(expected);
   });
 
   it('유물을 빼면 그 스킬도 사라진다', () => {
+    const removed = relic(equippedBy(getLoadout(), 'vanguard')[0] as string);
+    const gone = removed.actives.map((a) => a.skill.id);
+
     setLoadout(unequip(getLoadout(), 'vanguard', 0));
-    expect(partySkills()['vanguard']).toEqual([]);
+
+    const left = (partySkills()['vanguard'] ?? []).map((s) => s.id);
+    for (const skillId of gone) expect(left, `${skillId} 가 남아 있다`).not.toContain(skillId);
   });
 
   it('유물을 바꾸면 쓸 수 있는 스킬이 바뀐다', () => {
@@ -52,7 +69,9 @@ describe('partyStore', () => {
     loadout = equip(loadout, 'vanguard', 0, 'stone-seal', ownedRelics());
     setLoadout(loadout);
 
-    expect((partySkills()['vanguard'] ?? []).map((s) => s.id)).toEqual(['stone-fist']);
+    const skills = (partySkills()['vanguard'] ?? []).map((s) => s.id);
+    expect(skills).toContain('stone-fist');
+    expect(skills, '뺀 유물의 스킬이 남아 있다').not.toContain('ember-lash');
   });
 
   it('유물 스탯 보정이 전투 스탯에 반영된다', () => {
@@ -141,7 +160,7 @@ describe('partyStore', () => {
 
     resetParty();
 
-    expect(equippedBy(getLoadout(), 'vanguard')).toHaveLength(1);
+    expect(equippedBy(getLoadout(), 'vanguard')).toHaveLength(SLOTS_PER_MEMBER);
     expect(partyForBattle()[0]?.hp).toBe(partyForBattle()[0]?.stats.maxHp);
   });
 });
