@@ -21,7 +21,10 @@ export const RESONANCES: Readonly<Record<string, Resonance>> = {
       { tag: 'stone', count: 1 },
     ],
     statMods: { atk: 3, def: 3 },
-    description: '불을 돌 아래 묻으면 오래 간다.',
+    // "묻어두면 천천히 탄다" 를 수치로 옮긴 자리. 침식 완화 효과를 소비할 기제가
+    // T-026 에서 생겨서 붙였다 — 새 공명을 늘리지 않고 기존 것에 얹었다 (CLAUDE.md 규칙 9).
+    erosionRelief: 0.85,
+    description: '불을 돌 아래 묻으면 오래 간다. 유물이 천천히 탄다.',
   },
 
   'collapsing-echo': {

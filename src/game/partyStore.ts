@@ -15,6 +15,7 @@ import {
 } from '../core/relic/index.js';
 import {
   activeResonances,
+  resonanceErosionRelief,
   resonanceStatMods,
   type Resonance,
 } from '../core/relic/resonance.js';
@@ -151,16 +152,20 @@ export function partyForBattle(): BattleActor[] {
  * 파티원이 쓸 수 있는 스킬.
  *
  * **장착한 유물에서만 나온다** (ADR-004). 캐릭터에 스킬을 직접 들려주던 배선은 이걸로 사라졌다.
+ * 침식량도 여기서 정해진다 — 유물 계수(올림)와 공명 완화(내림)가 함께 곱해진다 (T-026).
  */
 export function partySkills(): Readonly<Record<ActorId, readonly Skill[]>> {
   const current = getLoadout();
   const ranks = relicRanks();
+  // 완화는 파티 **전원**에게 같은 값으로 걸린다. 공명이 파티 단위 효과이기 때문이다 (GDD §5.2).
+  const relief = resonanceErosionRelief(currentResonances());
   const skills: Record<ActorId, readonly Skill[]> = {};
 
   for (const member of basePartyMembers()) {
     skills[member.id] = activesOf(
       equippedBy(current, member.id).map((id) => relic(id)),
       ranks,
+      relief,
     );
   }
   return skills;

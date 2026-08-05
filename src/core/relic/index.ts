@@ -174,26 +174,56 @@ export function applyStatMods(base: Stats, mods: Readonly<Partial<Stats>>): Stat
 }
 
 /**
+ * 유물 계수를 반영한 침식량 (T-026).
+ *
+ * **1 미만으로 내려가지 않는다.** 계수로 침식을 0으로 만들 수 있으면 침식이 리스크 축이
+ * 아니게 된다 (GDD §5.4) — 완화를 쌓아 무제한으로 시전하는 것이 정답이 되어버린다.
+ * 이건 밸런스 조절값이 아니라 구조적 하한이므로 여기 둔다.
+ */
+export function scaledErosion(base: number, factor: number): number {
+  return Math.max(1, Math.round(base * factor));
+}
+
+/**
  * 지금 쓸 수 있는 액티브 스킬. 중복 스킬은 한 번만 나온다.
+ *
+ * **스킬의 침식량은 그 스킬을 공급한 유물이 정한다** (T-026). 같은 `ember-lash` 라도
+ * `가르는 핵`(계수 1.4)을 통해 쓰면 `잿불 고리`(1.0)보다 빨리 쌓인다 — 강한 유물일수록
+ * 빨리 폭주한다는 GDD §5.4 의 비례가 여기서 실제 수치가 된다.
+ *
+ * 이 계산을 전투 상태 머신이 아니라 여기서 하는 이유는, 그래야 `core/battle` 이 유물을
+ * 몰라도 되기 때문이다. 상태 머신에게 스킬은 그냥 스킬이다.
  *
  * `ranks` 를 주지 않으면 모두 0단계로 본다 — 숙련도를 모르는 호출부(테스트·시뮬레이터)가
  * 해금되지 않은 스킬을 실수로 쓰는 일을 막는다.
+ * `erosionScale` 은 파티 전체에 걸리는 완화 배수다 (공명 등). 1이면 그대로.
  */
 export function activesOf(
   relics: readonly Relic[],
   ranks: Readonly<Record<RelicId, number>> = {},
+  erosionScale = 1,
 ): readonly Skill[] {
-  const seen = new Set<string>();
-  return relics.flatMap((relic) =>
-    relic.actives
-      .filter((active) => active.unlockRank <= (ranks[relic.id] ?? 0))
-      .map((active) => active.skill)
-      .filter((skill) => {
-        if (seen.has(skill.id)) return false;
-        seen.add(skill.id);
-        return true;
-      }),
-  );
+  const byId = new Map<string, Skill>();
+
+  for (const relic of relics) {
+    for (const active of relic.actives) {
+      if (active.unlockRank > (ranks[relic.id] ?? 0)) continue;
+
+      const supplied: Skill = {
+        ...active.skill,
+        erosion: scaledErosion(active.skill.erosion, relic.erosionFactor * erosionScale),
+      };
+
+      // 같은 스킬을 두 유물이 공급하면 **덜 침식되는 쪽**을 쓴다.
+      // 둘 다 끼고 있는데 굳이 위험한 쪽으로 흘려보낼 이유가 없다.
+      const existing = byId.get(supplied.id);
+      if (existing === undefined || supplied.erosion < existing.erosion) {
+        byId.set(supplied.id, supplied);
+      }
+    }
+  }
+
+  return [...byId.values()];
 }
 
 /** 아직 잠긴 액티브. 장착 화면이 "몇 단계에 무엇이 열리는지" 를 보여주는 데 쓴다. */

@@ -1,6 +1,8 @@
 import type { AiProfile } from '../core/battle/ai.js';
 import type { ActorId, BattleActor, Stats } from '../core/battle/index.js';
+import type { Skill } from '../core/battle/skill.js';
 import type { SimSetup } from '../core/battle/simulate.js';
+import { activesOf, applyStatMods, sumStatMods, type Relic, type RelicId } from '../core/relic/index.js';
 import { aiProfile } from './ai.js';
 import {
   BOSS_MULTIPLIERS,
@@ -79,6 +81,82 @@ export function bossFight(level: number, skew: StatSkew = {}): SimSetup {
   ];
 
   return { actors, profiles: assignProfiles(actors, aiProfile('striker'), aiProfile('warden')) };
+}
+
+// ── 유물 편성 시나리오 (T-026) ──────────────────────────────────────────────
+//
+// 위의 `mobFight`·`bossFight` 는 파티에게 고정 AI 프로필을 쥐여준다. 그걸로는
+// **유물이 바뀌면 무엇이 달라지는가** 를 잴 수 없다 — 침식 계수도 공명도 관여하지 않는다.
+// 아래는 유물 편성을 실제로 갈아끼우며 재기 위한 것이고, T-027 의 조합 훑기가 이 위에 얹힌다.
+
+/**
+ * 유물이 공급한 스킬로 싸우는 AI.
+ *
+ * 기본 공격에 무게를 두되 스킬도 충분히 섞는다. 스킬을 거의 안 쓰면 침식이 쌓이지 않아
+ * 무엇을 재는 시나리오인지 흐려진다.
+ */
+function relicProfile(skills: readonly Skill[]): AiProfile {
+  return {
+    id: `relic:${skills.map((skill) => skill.id).join('+')}`,
+    phases: [
+      {
+        id: 'always',
+        options: [
+          { weight: 6, kind: 'attack', targeting: 'weakest' },
+          ...skills.map((skill) => ({
+            weight: 4,
+            kind: 'skill' as const,
+            skill,
+            targeting: 'weakest' as const,
+          })),
+        ],
+      },
+    ],
+  };
+}
+
+export interface RelicFightOptions {
+  /** 잡몹 3 (짧게) / 보스 1 (길게). 침식은 긴 전투에서만 물린다. */
+  readonly opponent?: 'mob' | 'boss';
+  readonly ranks?: Readonly<Record<RelicId, number>>;
+  /** 공명 등에서 오는 파티 전체 침식 완화 배수. */
+  readonly erosionRelief?: number;
+}
+
+/**
+ * 파티 전원이 같은 유물 편성을 낀 전투.
+ *
+ * 스탯 보정도 함께 적용한다 — 실제 게임이 그렇게 굴러가기 때문이다. 대신 **계수만 다른
+ * 두 유물을 비교하면 보정이 상쇄되어** 침식만 남는다. ADR-010 에서 원인을 잘못 읽은 뒤로,
+ * 이 프로젝트에서 밸런스 비교는 변수를 하나만 남기고 한다.
+ */
+export function relicFight(
+  level: number,
+  relics: readonly Relic[],
+  options: RelicFightOptions = {},
+): SimSetup {
+  const skills = activesOf(relics, options.ranks ?? {}, options.erosionRelief ?? 1);
+  const stats = applyStatMods(statsAtLevel(PARTY_CURVES, level), sumStatMods(relics));
+
+  const party = Array.from({ length: PARTY_SIZE }, (_, i) =>
+    makeCombatant(`party-${i + 1}`, 'party', stats),
+  );
+
+  const enemies =
+    options.opponent === 'boss'
+      ? [
+          makeCombatant('boss', 'enemy', statsAtLevel(MOB_CURVES, level, BOSS_MULTIPLIERS), {
+            affinity: { fire: 0.75 },
+          }),
+        ]
+      : Array.from({ length: MOB_COUNT }, (_, i) =>
+          makeCombatant(`mob-${i + 1}`, 'enemy', statsAtLevel(MOB_CURVES, level)),
+        );
+
+  const actors = [...party, ...enemies];
+  const enemyProfile = aiProfile(options.opponent === 'boss' ? 'warden' : 'brute');
+
+  return { actors, profiles: assignProfiles(actors, relicProfile(skills), enemyProfile) };
 }
 
 /** 측정 대상 레벨. 초반·중반·후반을 하나씩 본다. */

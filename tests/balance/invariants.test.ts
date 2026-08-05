@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { seedRange, simulateMany } from '../../src/core/battle/simulate.js';
+import { seedRange, simulateMany, type SimSetup } from '../../src/core/battle/simulate.js';
+import type { Relic } from '../../src/core/relic/index.js';
 import { BATTLE_TUNING } from '../../src/data/battle.js';
-import { BUILD_SKEWS, SAMPLE_LEVELS, bossFight, mobFight } from '../../src/data/scenarios.js';
+import { relic } from '../../src/data/relics.js';
+import {
+  BUILD_SKEWS,
+  SAMPLE_LEVELS,
+  bossFight,
+  mobFight,
+  relicFight,
+} from '../../src/data/scenarios.js';
 
 /**
  * 밸런스 불변식 (GDD §5.5, ADR-005).
@@ -16,7 +24,7 @@ import { BUILD_SKEWS, SAMPLE_LEVELS, bossFight, mobFight } from '../../src/data/
  */
 
 const SEEDS = seedRange(1, 100);
-const run = (setup: ReturnType<typeof mobFight>): ReturnType<typeof simulateMany> =>
+const run = (setup: SimSetup): ReturnType<typeof simulateMany> =>
   simulateMany(setup, SEEDS, BATTLE_TUNING);
 
 describe('불변식 5 · 전투 길이', () => {
@@ -102,6 +110,60 @@ describe('불변식 3 · 침식 압박 (부분)', () => {
   });
 
   it.todo('유적 1회 완주에 정화가 최소 1회 필요하다 — 연속 전투 지원 필요 (M4 거점)');
+});
+
+describe('불변식 3 · 유물 침식 계수 (T-026)', () => {
+  /**
+   * **계수만 다른 두 유물.** 나머지가 전부 같아야 승률·전투 길이의 차이를 침식 탓으로 돌릴 수 있다.
+   *
+   * ADR-010 에서 원인을 잘못 읽은 뒤로, 이 프로젝트에서 밸런스 비교는 변수를 하나만 남기고 한다.
+   * 실제 유물(`data/relics.ts`)을 쓰지 않는 이유도 그것이다 — 스탯 보정과 태그가 함께 달라진다.
+   */
+  const probe = (id: string, erosionFactor: number): Relic => ({
+    ...relic('ember-coil'),
+    id,
+    erosionFactor,
+  });
+
+  const mild = probe('probe-mild', 0.5);
+  const harsh = probe('probe-harsh', 2);
+
+  it('계수가 큰 유물로 싸우면 폭주가 더 자주 일어난다', () => {
+    const gentle = run(relicFight(20, [mild], { opponent: 'boss' }));
+    const severe = run(relicFight(20, [harsh], { opponent: 'boss' }));
+
+    expect(
+      severe.totalOverloads,
+      `완화 ${gentle.totalOverloads}회 vs 가혹 ${severe.totalOverloads}회`,
+    ).toBeGreaterThan(gentle.totalOverloads);
+  });
+
+  it('계수가 큰 유물은 대가를 치른다 (승률이 더 높지 않다)', () => {
+    // 침식이 그냥 숫자로만 오르고 결과에 영향이 없으면 리스크 축이 아니다.
+    const gentle = run(relicFight(20, [mild], { opponent: 'boss' }));
+    const severe = run(relicFight(20, [harsh], { opponent: 'boss' }));
+
+    expect(
+      severe.winRate,
+      `완화 ${(gentle.winRate * 100).toFixed(0)}% vs 가혹 ${(severe.winRate * 100).toFixed(0)}%`,
+    ).toBeLessThanOrEqual(gentle.winRate);
+  });
+
+  it('공명의 침식 완화가 폭주를 실제로 줄인다', () => {
+    const bare = run(relicFight(20, [harsh], { opponent: 'boss' }));
+    const relieved = run(relicFight(20, [harsh], { opponent: 'boss', erosionRelief: 0.6 }));
+
+    expect(
+      relieved.totalOverloads,
+      `완화 없음 ${bare.totalOverloads}회 vs 완화 ${relieved.totalOverloads}회`,
+    ).toBeLessThan(bare.totalOverloads);
+  });
+
+  it('계수가 달라도 전투가 멈추지 않는다', () => {
+    for (const sample of [mild, harsh]) {
+      expect(run(relicFight(20, [sample], { opponent: 'boss' })).timeouts, sample.id).toBe(0);
+    }
+  });
 });
 
 describe('결정론', () => {
