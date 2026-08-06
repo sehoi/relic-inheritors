@@ -873,6 +873,45 @@ test('잠긴 문은 열쇠를 줍기 전에는 막고, 주우면 열린다', asy
 });
 
 /**
+ * 보스 (T-051).
+ *
+ * **조우가 아니라 자리에 놓인 것이다.** 마주 보고 말을 걸어야 시작하고, 성소가
+ * 안전지대라 들어서다가 사고로 전투에 들어가지 않는다.
+ */
+test('성소의 보스와 싸워 유물을 얻는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  // 보스 왼쪽 칸에서 시작한다.
+  await page.goto('/?encounters=off&party=full&at=ruin-sanctum:33,8');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-zone', 'sanctum-inner');
+
+  // 성소는 안전지대다 — 걸어다녀도 조우가 없다.
+  await expect(page.locator('body')).toHaveAttribute('data-encounter-zone', 'safe');
+
+  // 마주 보고 말을 걸어야 시작한다.
+  await stepKey(page, 'ArrowRight');
+  await stepKey(page, 'Space');
+  await expect(page.locator('body'), '보스와 마주 보고도 전투가 시작되지 않았다').toHaveAttribute(
+    'data-scene',
+    'battle',
+    { timeout: 10_000 },
+  );
+  await page.screenshot({ path: `${SHOT_DIR}/boss.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 잡몹 여섯 종이 한 화면에 선다 (T-050).
  *
  * **타일 번호는 눈으로 봐야 안다.** 시트에서 번호만 보고 고르면 "떠도는 불씨" 자리에

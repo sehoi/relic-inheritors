@@ -187,6 +187,38 @@ export const RELICS: Readonly<Record<string, Relic>> = {
     erosionFactor: 1.5,
     lore: '불을 다루던 자들이 마지막에 쓴 것이다. 마지막이었던 이유는 적혀 있지 않다.',
   },
+
+  /**
+   * 보스 드랍 (T-051).
+   *
+   * **회수 지점에서 나오지 않는 유일한 유물이다.** 주워 모으는 것과 이겨서 얻는 것은
+   * 다른 종류의 보상이어야 하고, 그 차이가 보스를 잡을 이유가 된다.
+   *
+   * 침식 계수를 가장 높게 잡았다(1.6) — 3등급 띠(1.4~)의 위쪽이다. 세지만 빨리 타는 것이
+   * 등급의 뜻이고(GDD §5.4), 마지막에 얻는 것이 그 축의 끝에 있는 편이 읽기 쉽다.
+   *
+   * **MP 를 가장 많이 준다.** 계수가 높은 유물에 MP 를 얹으면 "많이 쓸 수 있지만 빨리 탄다"
+   * 가 한 유물 안에서 성립한다 — 두 축이 서로를 밀어내는 자리가 이 유물의 성격이다.
+   *
+   * ⚠️ **처음엔 `atk 7 / mag 7 / maxHp 20` 이었고 그건 필수 유물이었다.** 물리와 마법
+   * 양쪽에 붙으니 어떤 편성에도 쓸모 있어, 빼고 짠 최고 조합이 28%p 손해였다 (기준 25%p).
+   * 한쪽으로 몰고 총량을 다른 3등급 수준으로 낮췄다 — **양면성 자체가 문제였지 수치가
+   * 아니었다.**
+   */
+  'severed-crest': {
+    id: 'severed-crest',
+    name: '끊어진 문장',
+    tier: 3,
+    element: 'none',
+    tags: ['ward', 'hollow'],
+    statMods: { mag: 9, maxMp: 10, def: -3, res: -3 },
+    actives: [
+      { skill: skill('ward-strike'), unlockRank: 0 },
+      { skill: skill('sundering-arc'), unlockRank: 2 },
+    ],
+    erosionFactor: 1.6,
+    lore: '문을 지키던 것의 몸에서 떨어져 나왔다. 지키라는 명령만 남고 지킬 것은 사라진 뒤였다.',
+  },
 };
 
 export const relicRegistry = createRegistry('유물', RELICS, (relic) => relic.id);

@@ -20,6 +20,7 @@ import { MOB_KINDS, ruinEncounter, mobTile, type Encounter } from '../../data/en
 import { showAllMobs } from '../devFlags.js';
 import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
+import { relic } from '../../data/relics.js';
 import { markBattle, markPartyPanel, markScene, type BattlePhase } from '../domState.js';
 import {
   getInventory,
@@ -29,6 +30,7 @@ import {
   resetParty,
   saveInventory,
   saveParty,
+  gainRelic,
   settleVictory,
 } from '../partyStore.js';
 import { expForEnemy } from '../../core/progress/level.js';
@@ -51,6 +53,13 @@ export interface BattleEntry {
   readonly seed?: number;
   /** 전투가 끝나면 돌아갈 곳. 없으면 타이틀로 나간다 (개발용 직접 진입). */
   readonly returnTo?: OverworldEntry;
+  /**
+   * 이기면 얻는 유물 (T-051, 보스전).
+   *
+   * **정산을 여기서 한다.** 탐색 씬으로 돌아간 뒤에 주면 "이겼는가" 를 두 곳에서 알아야
+   * 하고, 그 둘은 반드시 어긋난다 — 전투 결과를 아는 것은 이 씬뿐이다.
+   */
+  readonly dropRelicId?: string;
 }
 
 interface PendingAction {
@@ -70,6 +79,7 @@ export class BattleScene extends Phaser.Scene {
   private encounter!: Encounter;
   private state!: BattleState;
   private returnTo: OverworldEntry | undefined;
+  private dropRelicId: string | undefined;
 
   /** 이번 전투에서 스킬을 몇 번 썼는가. 전투가 끝나면 유물 숙련도로 환산된다. */
   private skillUses: Record<string, number> = {};
@@ -97,6 +107,7 @@ export class BattleScene extends Phaser.Scene {
 
   init(entry?: BattleEntry): void {
     this.returnTo = entry?.returnTo;
+    this.dropRelicId = entry?.dropRelicId;
     // 개발용 직접 진입(`?scene=battle`)에서도 유물에서 스킬이 나오게 한다.
     this.encounter =
       entry?.encounter ??
@@ -159,7 +170,12 @@ export class BattleScene extends Phaser.Scene {
 
     enemies.forEach((enemy, i) => {
       const x = gap * (i + 1);
-      const view = this.add.image(x, 62, 'tiles-dungeon', mobTile(enemy.id)).setScale(2);
+      const tile = this.encounter.enemyTiles?.[enemy.id] ?? mobTile(enemy.id);
+      // 하나뿐이면 크게 그린다 (보스전이 그렇다). 커진 만큼 위로 올려야 이름표를 덮지 않는다.
+      const alone = enemies.length === 1;
+      const view = this.add
+        .image(x, alone ? 52 : 62, 'tiles-dungeon', tile)
+        .setScale(alone ? 3 : 2);
       this.enemyViews.set(enemy.id, view);
       this.enemyLabels.set(
         enemy.id,
@@ -479,6 +495,13 @@ export class BattleScene extends Phaser.Scene {
     if (result.levelledTo !== undefined) {
       parts.push(`레벨 ${result.levelledTo}!  기운을 되찾았다`);
     }
+
+    // 보스 드랍 (T-051). 전투 결과를 아는 것은 이 씬뿐이라 정산도 여기서 한다.
+    if (this.dropRelicId !== undefined) {
+      gainRelic(this.dropRelicId);
+      parts.push(`${relic(this.dropRelicId).name} 을(를) 얻었다`);
+    }
+
     return parts.join('   ');
   }
 
