@@ -82,6 +82,8 @@ const STEP_DURATION = 110;
 export interface OverworldEntry {
   readonly mapId?: MapId;
   readonly arrival?: { readonly position: { x: number; y: number }; readonly facing: Direction };
+  /** 메뉴에서 "조작 안내" 를 고르고 왔다. 안내는 씬이 아니라 이 화면의 겹침이다. */
+  readonly openHelp?: boolean;
 }
 
 /**
@@ -115,6 +117,7 @@ export class OverworldScene extends Phaser.Scene {
   private saveKeys: Phaser.Input.Keyboard.Key[] = [];
   private helpKeys: Phaser.Input.Keyboard.Key[] = [];
   private codexKeys: Phaser.Input.Keyboard.Key[] = [];
+  private menuKeys: Phaser.Input.Keyboard.Key[] = [];
   private keyGuide!: KeyGuide;
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
@@ -175,7 +178,7 @@ export class OverworldScene extends Phaser.Scene {
     this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
     markWalker(this.walker);
     markDialogue(undefined);
-    markHelp(false);
+    markHelp(this.entry.openHelp === true ? this.keyGuide.toggle() : false);
     markSites(this.remainingSites().length);
     this.updateLocation();
     this.updateFacingPip();
@@ -221,13 +224,12 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     if (this.codexJustPressed()) {
-      this.leaving = true;
-      this.scene.start('codex', {
-        returnTo: {
-          mapId: this.mapId,
-          arrival: { position: this.walker.position, facing: this.walker.facing },
-        },
-      } satisfies CodexEntryParams);
+      this.openScreen('codex');
+      return;
+    }
+
+    if (this.menuJustPressed()) {
+      this.openScreen('menu');
       return;
     }
 
@@ -546,6 +548,7 @@ export class OverworldScene extends Phaser.Scene {
       this.saveKeys = [];
       this.helpKeys = [];
       this.codexKeys = [];
+      this.menuKeys = [];
       return;
     }
 
@@ -565,6 +568,7 @@ export class OverworldScene extends Phaser.Scene {
     this.saveKeys = bind(OVERWORLD_KEYS.save);
     this.helpKeys = bind(OVERWORLD_KEYS.help);
     this.codexKeys = bind(OVERWORLD_KEYS.codex);
+    this.menuKeys = bind(OVERWORLD_KEYS.menu);
   }
 
   /**
@@ -589,6 +593,21 @@ export class OverworldScene extends Phaser.Scene {
 
   private codexJustPressed(): boolean {
     return this.codexKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private menuJustPressed(): boolean {
+    return this.menuKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  /** 돌아올 자리를 함께 넘겨 제자리에서 이어가게 한다. 어느 화면이든 같은 약속이다. */
+  private openScreen(scene: 'codex' | 'menu'): void {
+    this.leaving = true;
+    this.scene.start(scene, {
+      returnTo: {
+        mapId: this.mapId,
+        arrival: { position: this.walker.position, facing: this.walker.facing },
+      },
+    } satisfies CodexEntryParams);
   }
 
   /** 세이브 화면. 지금 선 자리를 저장 위치로 넘긴다 (T-038). */

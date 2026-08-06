@@ -7,6 +7,9 @@
  * 터지면 확인이 불가능하고, 전투 UI를 만지는 동안 탐색을 거쳐 들어가야 하면 왕복이 길다.
  * 스모크가 이걸 쓰는 것은 부수 효과일 뿐이다.
  */
+import type { ActorId } from '../core/battle/index.js';
+import { ROSTER } from '../data/party.js';
+
 function flag(name: string): string | undefined {
   if (typeof window === 'undefined') return undefined;
   return new URLSearchParams(window.location.search).get(name) ?? undefined;
@@ -35,4 +38,16 @@ export function encountersEnabled(): boolean {
  */
 export function startWithFullParty(): boolean {
   return flag('party') === 'full';
+}
+
+/**
+ * 요청됐으면 동료를 전부 합류시킨다.
+ *
+ * **파티를 비우는 곳마다 불러야 한다.** 부팅 때 한 번만 했더니 타이틀의 "새로 시작"
+ * (`resetParty`)이 도로 지워서, 타이틀을 거쳐 들어오면 플래그가 없는 것과 같았다 —
+ * 타이틀을 건너뛰는 `?scene=battle` 에서만 듣던 셈이다.
+ */
+export function joinFullPartyIfRequested(join: (id: ActorId) => void): void {
+  if (!startWithFullParty()) return;
+  for (const member of ROSTER) join(member.id);
 }

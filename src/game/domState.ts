@@ -18,6 +18,8 @@ export const SCENE_KEYS = [
   'battle',
   'relic',
   'codex',
+  'menu',
+  'status',
   'save',
   'shop',
 ] as const;
@@ -135,6 +137,23 @@ export function markShop(state: {
 /** 파티 레벨 (T-044). 전투를 이겨 레벨이 올랐는지 스모크가 이걸로 판정한다. */
 export function markLevel(level: number): void {
   document.body.dataset['level'] = String(level);
+}
+
+/** 메뉴에서 지금 가리키는 항목 (T-060). */
+export function markMenu(item: string): void {
+  document.body.dataset['menuItem'] = item;
+}
+
+/**
+ * 인물 화면 (T-061).
+ *
+ * `hpBonus` 는 **유물 보정이 실제로 반영되는지**를 밖에서 확인하는 값이다. 기본값과
+ * 보정값을 나란히 그리는 화면이라, 둘이 같은 출처를 쓰면 차이가 늘 0 이 되고
+ * 화면은 멀쩡해 보인다.
+ */
+export function markStatus(actorId: string, hpBonus: number): void {
+  document.body.dataset['statusActor'] = actorId;
+  document.body.dataset['statusHpBonus'] = String(hpBonus);
 }
 
 /**

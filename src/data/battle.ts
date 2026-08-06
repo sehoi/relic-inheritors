@@ -1,6 +1,6 @@
 import type { DamageTuning } from '../core/battle/damage.js';
 import type { AilmentValue, ErosionTuning } from '../core/battle/skill.js';
-import type { AilmentTuning } from '../core/battle/status.js';
+import type { Ailment, AilmentState, AilmentTuning } from '../core/battle/status.js';
 import type { BattleTuning, FleeTuning, TurnOrderTuning } from '../core/battle/index.js';
 
 /**
@@ -118,6 +118,28 @@ export const AILMENT_POWER: AilmentValue = {
 export const VICTORY_RECOVERY = {
   mpPerEnemy: 1,
 } as const;
+
+/**
+ * 상태이상의 표시 이름 (T-059).
+ *
+ * **화면에 이름이 없으면 걸었는지 알 수 없다.** 상태이상은 다섯 가지가 서로 다른 방식으로
+ * 커맨드 선택을 제약하는데(`core/battle/status.ts`), 그 제약이 걸렸는지 보이지 않으면
+ * 독을 묻히는 스킬과 그냥 약한 스킬이 구분되지 않는다.
+ *
+ * 짧게 잡았다 — 적 하나당 쓸 수 있는 폭이 60px 남짓이라 두 글자를 넘으면 겹친다.
+ */
+export const AILMENT_NAMES: Readonly<Record<Ailment, string>> = {
+  poison: '독',
+  paralysis: '마비',
+  sleep: '수면',
+  silence: '침묵',
+  confusion: '혼란',
+};
+
+/** `독2 침묵1` — 남은 턴까지 보여준다. 한 턴 남은 것과 다섯 턴 남은 것은 다른 상황이다. */
+export function describeAilments(ailments: readonly AilmentState[]): string {
+  return ailments.map((a) => `${AILMENT_NAMES[a.kind]}${a.turns}`).join(' ');
+}
 
 /**
  * 레벨업이 되돌려주는 것 (T-049c).
