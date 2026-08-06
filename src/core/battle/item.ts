@@ -13,7 +13,14 @@ import type { BattleActor } from './index.js';
 import { ailmentsOf, removeAilment, type Ailment } from './status.js';
 
 export type ItemEffect =
-  | { readonly kind: 'heal'; readonly amount: number }
+  /**
+   * HP·MP 를 되돌린다 (T-053).
+   *
+   * **둘을 한 효과로 둔다.** 나누면 "HP 와 MP 를 함께 주는 물건" 을 만들 수 없고,
+   * 그건 아이템 20종을 채우면서 가장 자연스럽게 나오는 종류다. 한쪽만 주는 것은
+   * 다른 쪽을 0 으로 두면 된다 — 두 축을 가진 하나가 축 하나짜리 둘보다 좁지 않다.
+   */
+  | { readonly kind: 'heal'; readonly hp?: number; readonly mp?: number }
   | { readonly kind: 'cure'; readonly ailments: readonly Ailment[] }
   | { readonly kind: 'cleanse'; readonly erosion: number }
   /** 쓰러진 대상을 최대 HP 의 비율로 일으킨다. 회복 아이템은 이걸 못 한다 (damage.ts 참조). */
@@ -72,15 +79,24 @@ export function itemBlockReason(
   }
 
   if (item.effect.kind === 'cleanse' && target.erosion <= 0) return '침식이 없다';
-  if (item.effect.kind === 'heal' && target.hp >= target.stats.maxHp) return '이미 온전하다';
+
+  if (item.effect.kind === 'heal') {
+    // **줄 수 있는 것 중 하나라도 모자라면 쓸 수 있다.** 둘 다 가득일 때만 막는다 —
+    // HP 는 가득이고 MP 는 비었는데 "이미 온전하다" 로 막으면 물건이 죽는다.
+    const hpRoom = (item.effect.hp ?? 0) > 0 && target.hp < target.stats.maxHp;
+    const mpRoom = (item.effect.mp ?? 0) > 0 && target.mp < target.stats.maxMp;
+    if (!hpRoom && !mpRoom) return '이미 온전하다';
+  }
 
   return undefined;
 }
 
 export interface ItemOutcome {
   readonly actor: BattleActor;
-  /** 실제로 회복된 양. 최대치에 막히면 요청량보다 작다. */
+  /** 실제로 회복된 HP. 최대치에 막히면 요청량보다 작다. */
   readonly healed: number;
+  /** 실제로 되돌아온 MP (T-053). */
+  readonly restored: number;
   readonly cured: readonly Ailment[];
   /** 실제로 씻어낸 침식량. */
   readonly cleansed: number;
@@ -89,12 +105,24 @@ export interface ItemOutcome {
 
 /** 효과를 적용한 결과. 무엇이 실제로 일어났는지를 함께 돌려준다 — 이벤트가 그걸 필요로 한다. */
 export function applyItemEffect(target: BattleActor, item: Item): ItemOutcome {
-  const none = { healed: 0, cured: [] as readonly Ailment[], cleansed: 0, revived: false };
+  const none = {
+    healed: 0,
+    restored: 0,
+    cured: [] as readonly Ailment[],
+    cleansed: 0,
+    revived: false,
+  };
 
   switch (item.effect.kind) {
     case 'heal': {
-      const after = applyHeal(target, item.effect.amount);
-      return { ...none, actor: after, healed: after.hp - target.hp };
+      const healed = applyHeal(target, item.effect.hp ?? 0);
+      const mp = Math.min(target.stats.maxMp, healed.mp + (item.effect.mp ?? 0));
+      return {
+        ...none,
+        actor: { ...healed, mp },
+        healed: healed.hp - target.hp,
+        restored: mp - target.mp,
+      };
     }
 
     case 'cure': {

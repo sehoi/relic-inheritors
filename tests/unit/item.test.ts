@@ -141,7 +141,10 @@ describe('아이템 데이터', () => {
   it('효과 수치가 양수다', () => {
     for (const entry of Object.values(ITEMS)) {
       const { effect } = entry;
-      if (effect.kind === 'heal') expect(effect.amount, entry.id).toBeGreaterThan(0);
+      if (effect.kind === 'heal') {
+        // 아무것도 주지 않는 회복 아이템은 쓸 수 없는 물건이다 — 어느 쪽이든 하나는 줘야 한다.
+        expect((effect.hp ?? 0) + (effect.mp ?? 0), entry.id).toBeGreaterThan(0);
+      }
       if (effect.kind === 'cleanse') expect(effect.erosion, entry.id).toBeGreaterThan(0);
       if (effect.kind === 'revive') {
         expect(effect.hpRatio, entry.id).toBeGreaterThan(0);
