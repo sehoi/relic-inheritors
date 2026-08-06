@@ -22,6 +22,7 @@ import { innPrice, type Facility } from '../../core/world/facility.js';
 import { sitesForMap } from '../../data/sites.js';
 import { CLEANSING, INN, facilitiesForMap } from '../../data/facilities.js';
 import { relic } from '../../data/relics.js';
+import { bossActor, bossProfiles, bossesForMap, type BossPlacement } from '../../data/bosses.js';
 import {
   advanceCounter,
   startCounter,
@@ -39,6 +40,7 @@ import {
   partyForBattle,
   partyLevel,
   partySkills,
+  ownedRelics,
   restAtInn,
   worldRandom,
 } from '../partyStore.js';
@@ -104,6 +106,7 @@ export class OverworldScene extends Phaser.Scene {
   private portals: readonly Portal[] = [];
   private zones: readonly Zone[] = [];
   private facilities: readonly Facility[] = [];
+  private bosses: readonly BossPlacement[] = [];
   /** 아직 줍지 않은 회수 지점의 표식. 주우면 지운다. */
   private readonly siteViews = new Map<string, Phaser.GameObjects.Rectangle>();
 
@@ -150,6 +153,10 @@ export class OverworldScene extends Phaser.Scene {
     this.portals = portalsForMap(this.mapId);
     this.zones = zonesForMap(this.mapId);
     this.facilities = facilitiesForMap(this.mapId);
+    // 이미 이긴 보스는 서 있지 않다. 유물을 지녔는지가 곧 처치 여부다.
+    this.bosses = bossesForMap(this.mapId).filter(
+      (boss) => !ownedRelics().includes(boss.dropRelicId),
+    );
     this.stepping = false;
     this.leaving = false;
     this.dialogue = undefined;
@@ -169,6 +176,7 @@ export class OverworldScene extends Phaser.Scene {
 
     for (const facility of this.facilities) world.add(this.createFacilityView(facility));
     for (const npc of this.npcs) world.add(this.createNpcView(npc));
+    for (const boss of this.bosses) world.add(this.createBossView(boss));
 
     this.walker = this.startingWalker();
     this.playerView = this.createPlayerView();
@@ -258,7 +266,7 @@ export class OverworldScene extends Phaser.Scene {
       this.walker,
       direction,
       // 시설도 NPC 처럼 길을 막는다 — 밟고 지나갈 수 있으면 마주 보는 조작이 성립하지 않는다.
-      blockedByOccupants([...this.npcs, ...this.facilities]),
+      blockedByOccupants([...this.npcs, ...this.facilities, ...this.bosses]),
     );
     this.walker = walker;
     markWalker(walker);
@@ -450,6 +458,18 @@ export class OverworldScene extends Phaser.Scene {
       return;
     }
 
+    /**
+     * 보스 (T-051).
+     *
+     * **조우가 아니라 자리에 놓인 것이다.** 마주 보고 말을 걸어야 시작한다 —
+     * 밟으면 시작하게 두면 성소에 들어서다가 사고로 전투에 들어간다.
+     */
+    const boss = occupantInFront(this.bosses, this.walker);
+    if (boss !== undefined) {
+      this.confrontBoss(boss);
+      return;
+    }
+
     const npc = occupantInFront(this.npcs, this.walker);
     if (npc === undefined) return;
 
@@ -462,6 +482,43 @@ export class OverworldScene extends Phaser.Scene {
 
     const script = npc.joinsAs !== undefined ? (npc.joinedDialogueId ?? npc.dialogueId) : npc.dialogueId;
     this.openLines(dialogueScript(script));
+  }
+
+  /**
+   * 보스에게 말을 건다 (T-051).
+   *
+   * **이미 이겼으면 다시 싸우지 않는다.** 판정은 드랍 유물을 지녔는지로 한다 —
+   * 처치 여부를 따로 저장하면 둘이 어긋날 자리가 생기고, 유물을 잃는 기제가 없으므로
+   * 둘은 같은 뜻이다.
+   */
+  private confrontBoss(boss: BossPlacement): void {
+    if (ownedRelics().includes(boss.dropRelicId)) {
+      this.openLines({
+        id: `boss:${boss.id}:after`,
+        lines: boss.afterwards.map((text) => ({ text })),
+      });
+      return;
+    }
+
+    const party = partyForBattle();
+    const actors = [...party, bossActor(boss)];
+
+    this.leaving = true;
+    this.scene.start('battle', {
+      encounter: {
+        level: boss.level,
+        actors,
+        profiles: bossProfiles(actors, boss),
+        partySkills: partySkills(),
+        inventory: getInventory(),
+        enemyTiles: { [boss.id]: boss.tile },
+      },
+      dropRelicId: boss.dropRelicId,
+      returnTo: {
+        mapId: this.mapId,
+        arrival: { position: this.walker.position, facing: this.walker.facing },
+      },
+    } satisfies BattleEntry);
   }
 
   /**
@@ -734,6 +791,18 @@ export class OverworldScene extends Phaser.Scene {
       CHARACTER_SHEET.key,
       npc.tile,
     );
+  }
+
+  /** 보스는 던전 시트에서 나오고 크게 그린다 — 잡몹과 같은 크기면 자리가 특별해 보이지 않는다. */
+  private createBossView(boss: BossPlacement): Phaser.GameObjects.Image {
+    return this.add
+      .image(
+        boss.position.x * this.map.tileWidth + this.map.tileWidth / 2,
+        boss.position.y * this.map.tileHeight + this.map.tileHeight / 2,
+        'tiles-dungeon',
+        boss.tile,
+      )
+      .setScale(1.5);
   }
 
   /**

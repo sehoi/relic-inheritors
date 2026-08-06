@@ -27,6 +27,14 @@ export interface Encounter {
   /** 파티원이 쓸 수 있는 스킬. M3 에서 장착 유물이 이 자리를 대신한다. */
   readonly partySkills: Readonly<Record<ActorId, readonly Skill[]>>;
   readonly inventory: Inventory;
+  /**
+   * 적의 겉모습. 생략하면 id 에서 잡몹 종류를 읽는다 (`mobTile`).
+   *
+   * **보스는 id 규칙이 다르다.** `sanctum-warden` 을 `-` 로 잘라 잡몹 종류를 찾으면
+   * 없는 종류라 기본값(유령)이 나온다 — 실제로 그렇게 나왔다. 조우가 겉모습을
+   * 직접 들고 다니면 id 를 파싱하는 규칙에 기대지 않아도 된다.
+   */
+  readonly enemyTiles?: Readonly<Record<ActorId, number>>;
 }
 
 /**
@@ -108,7 +116,7 @@ const MOB_TEMPLATES = {
     name: '떠도는 불씨',
     // 111 은 사람 얼굴이었다. 시트에서 번호만 보고 고르면 이런 일이 나고,
     // 화면을 보기 전에는 테스트가 전부 초록이다 (`?mobs=all`).
-    tile: 124,
+    tile: 120,
     affinity: { earth: 1.5, fire: 0.5 },
     ai: 'stalker',
     statScale: { maxHp: 0.65, agi: 1.5, atk: 0.9, def: 0.8 },

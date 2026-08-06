@@ -29,6 +29,7 @@ import { item } from '../../src/data/items.js';
 import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
 import { TOTAL_SLOTS } from '../../src/data/party.js';
 import { AREA_MOBS, MOB_KINDS, mobProfile } from '../../src/data/encounters.js';
+import { BOSSES_BY_MAP } from '../../src/data/bosses.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
@@ -258,6 +259,29 @@ describe('회수 지점 (T-039)', () => {
     expect(redundant, `이미 지닌 유물입니다:\n${redundant.join('\n')}`).toEqual([]);
   });
 
+  it('보스는 안전지대에 서 있고 드랍은 겹치지 않는다 (T-051)', () => {
+    const problems: string[] = [];
+
+    for (const [mapId, bosses] of Object.entries(BOSSES_BY_MAP)) {
+      for (const boss of bosses ?? []) {
+        // 조우가 아니라 자리에 놓인 것이다. 들어서다가 습격당하면 문을 연 것이
+        // 보상이 아니라 함정이 된다.
+        if (encountersAt(zonesForMap(mapId as MapId), boss.position.x, boss.position.y)) {
+          problems.push(`${boss.id}: 전투가 벌어지는 구역에 서 있다`);
+        }
+        // 드랍을 회수 지점에도 두면 유물을 두 번 얻거나, 둘째가 아무 일도 안 해 버그로 보인다.
+        const alsoDropped =
+          STARTING_RELICS.includes(boss.dropRelicId) ||
+          Object.values(SITES_BY_MAP)
+            .flat()
+            .some((site) => site.reward.kind === 'relic' && site.reward.relicId === boss.dropRelicId);
+        if (alsoDropped) problems.push(`${boss.id}: ${boss.dropRelicId} 를 다른 곳에서도 얻는다`);
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+
   it('잠긴 문의 열쇠를 어딘가에서 주울 수 있다 (T-052)', () => {
     // **열쇠 없는 잠긴 문은 그냥 벽이다.** 문을 옮기거나 회수 지점을 지우면
     // 조용히 그렇게 되는데, 화면에서는 "아직 못 찾았다" 와 구분되지 않는다.
@@ -285,6 +309,12 @@ describe('회수 지점 (T-039)', () => {
       ...Object.values(SITES_BY_MAP)
         .flat()
         .flatMap((site) => (site.reward.kind === 'relic' ? [site.reward.relicId] : [])),
+      // 보스 드랍도 획득 경로다 (T-051). 이 줄이 없어 검사가 한 번 빨개졌는데,
+      // **그건 검사가 제 일을 한 것이다** — 유물을 늘리면서 나눠 놓는 자리를 안 늘렸다면
+      // 똑같이 빨개졌을 테니까.
+      ...Object.values(BOSSES_BY_MAP)
+        .flat()
+        .map((boss) => boss.dropRelicId),
     ]);
 
     const unreachable = Object.keys(RELICS).filter((id) => !obtainable.has(id));
