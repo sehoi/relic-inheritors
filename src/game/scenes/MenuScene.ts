@@ -5,6 +5,7 @@ import { elapsedMs, formatPlaytime } from '../playtime.js';
 import { markMenu, markScene } from '../domState.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
+import type { SavedLocation } from '../../core/save/index.js';
 import type { SceneKey } from '../domState.js';
 
 /**
@@ -26,13 +27,22 @@ interface MenuItem {
   readonly scene: SceneKey | 'close' | 'help';
   /** 이 화면으로 가는 지름길. 메뉴가 단축키를 가르치는 자리가 된다. */
   readonly shortcut: string | undefined;
+  /**
+   * 세이브 화면의 모드 (T-064).
+   *
+   * **반드시 적는다.** 안 넘기면 `SaveScene` 이 기본값 `load` 를 쓰는데, 그래서
+   * 메뉴의 "저장" 이 불러오기 화면을 열고 있었다 — 화면이 비슷하게 생겨서 눈에도 안 띈다.
+   */
+  readonly mode?: 'save' | 'load';
 }
 
 const ITEMS: readonly MenuItem[] = [
   { label: '인물', scene: 'status', shortcut: undefined },
   { label: '유물 장착', scene: 'relic', shortcut: OVERWORLD_KEYS.relic.keys[0] },
   { label: '유물 도감', scene: 'codex', shortcut: OVERWORLD_KEYS.codex.keys[0] },
-  { label: '저장', scene: 'save', shortcut: OVERWORLD_KEYS.save.keys[0] },
+  { label: '저장', scene: 'save', shortcut: OVERWORLD_KEYS.save.keys[0], mode: 'save' },
+  // 불러오기는 단축키가 없다 — 탐색 중에 실수로 누르면 지금까지의 진행이 날아간다.
+  { label: '이어하기', scene: 'save', shortcut: undefined, mode: 'load' },
   { label: '조작 안내', scene: 'help', shortcut: OVERWORLD_KEYS.help.keys[0] },
   { label: '돌아가기', scene: 'close', shortcut: undefined },
 ];
@@ -170,7 +180,25 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // 어느 화면이든 돌아올 곳을 그대로 넘긴다. 메뉴를 거쳤다고 제자리를 잃으면 안 된다.
-    this.scene.start(item.scene, { returnTo: this.returnTo });
+    // 저장 화면은 모드까지 넘긴다 — 생략하면 저장하러 들어가서 불러오기 화면을 만난다.
+    this.scene.start(item.scene, {
+      returnTo: this.returnTo,
+      ...(item.mode === undefined ? {} : { mode: item.mode, location: this.location() }),
+    });
+  }
+
+  /**
+   * 저장할 자리.
+   *
+   * **돌아갈 곳이 곧 지금 서 있는 곳이다.** 위치를 따로 들고 다니면 둘이 어긋날 수 있는데,
+   * 메뉴는 걸음을 멈춘 자리에서만 열리므로 하나로 충분하다.
+   */
+  private location(): SavedLocation | undefined {
+    const mapId = this.returnTo?.mapId;
+    const arrival = this.returnTo?.arrival;
+    if (mapId === undefined || arrival === undefined) return undefined;
+
+    return { mapId, x: arrival.position.x, y: arrival.position.y, facing: arrival.facing };
   }
 
   private close(): void {

@@ -214,12 +214,19 @@ export class SaveScene extends Phaser.Scene {
     this.refresh();
   }
 
+  /**
+   * 닫으면 어디로 가는가.
+   *
+   * **모드가 아니라 돌아갈 곳이 정한다.** 예전에는 `load` 면 무조건 타이틀로 갔는데,
+   * 메뉴에서 이어하기를 열고 취소하면 걷던 자리를 잃고 타이틀로 튕겼다 (T-064).
+   * 타이틀에서 들어온 경우에만 돌아갈 곳이 없고, 그때가 타이틀로 갈 때다.
+   */
   private close(): void {
-    if (this.mode === 'save') {
-      this.scene.start('overworld', this.returnTo ?? {});
-    } else {
+    if (this.returnTo === undefined) {
       this.scene.start('title');
+      return;
     }
+    this.scene.start('overworld', this.returnTo);
   }
 
   private notice(text: string): void {
