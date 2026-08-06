@@ -38,6 +38,9 @@ import { COIN_REWARD, EXP_REWARD } from '../../data/progression.js';
 import { Gauge } from '../ui/Gauge.js';
 import { BATTLE_KEYS } from '../../data/keys.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { ChoiceBox } from '../ui/ChoiceBox.js';
+import { browserStorage, readAllSlots } from '../save/storage.js';
+import type { SaveEntry } from './SaveScene.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /** 이벤트 하나를 보여주는 시간. 너무 빠르면 무슨 일이 있었는지 읽을 수 없다. */
@@ -98,6 +101,7 @@ export class BattleScene extends Phaser.Scene {
   private menuText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private cursor!: Phaser.GameObjects.Text;
+  private choiceBox!: ChoiceBox;
 
   private keys: BoundKeys = {};
 
@@ -155,6 +159,7 @@ export class BattleScene extends Phaser.Scene {
       color: '#c8a15a',
     });
 
+    this.choiceBox = new ChoiceBox(this);
     this.bindKeys();
     this.beginTurn();
   }
@@ -505,13 +510,38 @@ export class BattleScene extends Phaser.Scene {
     return parts.join('   ');
   }
 
-  /** 전투가 끝난 뒤 나갈 곳. 전멸이면 타이틀, 아니면 왔던 자리로 돌아간다. */
+  /**
+   * 전투가 끝난 뒤 나갈 곳.
+   *
+   * **전멸했다고 곧장 타이틀로 보내지 않는다** (T-042). 세이브가 생긴 뒤로는 마지막 저장
+   * 지점에서 다시 하는 것이 자연스러운 선택인데, 타이틀로 튕기면 이어하기를 다시 찾아
+   * 들어가야 한다 — 진 것에 더해 길까지 잃는 셈이다.
+   *
+   * **이어할 세이브가 있을 때만 묻는다.** 없으면 고를 것이 하나뿐이고, 그건 질문이 아니다.
+   */
   private leaveBattle(): void {
-    if (this.state.outcome === 'defeat' || this.returnTo === undefined) {
+    if (this.state.outcome !== 'defeat') {
+      this.scene.start('overworld', this.returnTo ?? {});
+      return;
+    }
+
+    const resumable = readAllSlots(browserStorage()).some((slot) => slot.kind === 'ok');
+    if (!resumable) {
       this.scene.start('title');
       return;
     }
-    this.scene.start('overworld', this.returnTo);
+
+    this.choiceBox.ask(
+      '쓰러졌다. 여기서 끝낼 수는 없다.',
+      ['마지막으로 저장한 곳에서 다시', '타이틀로'],
+      (picked) => {
+        if (picked === 0) {
+          this.scene.start('save', { mode: 'load' } satisfies SaveEntry);
+          return;
+        }
+        this.scene.start('title');
+      },
+    );
   }
 
   // ── 메뉴 ────────────────────────────────────────────────────────────────
@@ -576,6 +606,22 @@ export class BattleScene extends Phaser.Scene {
   }
 
   override update(): void {
+    /**
+     * 전멸 뒤의 선택 창이 떠 있으면 그쪽이 입력을 갖는다 (T-042).
+     *
+     * ⚠️ **열려 있을 때만 읽는다.** `JustDown` 은 부르는 순간 소비되므로, 닫힌 창에
+     * 넘기려고 읽기만 해도 아래 커맨드 메뉴가 그 입력을 못 본다.
+     */
+    if (this.choiceBox.isOpen) {
+      this.choiceBox.handle({
+        up: this.pressed('up'),
+        down: this.pressed('down'),
+        confirm: this.pressed('confirm'),
+        cancel: false,
+      });
+      return;
+    }
+
     if (this.phase === 'playing') return;
 
     if (this.phase === 'over') {
