@@ -28,6 +28,7 @@ import { CLEANSING, facilitiesForMap } from '../../src/data/facilities.js';
 import { item } from '../../src/data/items.js';
 import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
 import { TOTAL_SLOTS } from '../../src/data/party.js';
+import { AREA_MOBS, MOB_KINDS, mobProfile } from '../../src/data/encounters.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
@@ -283,6 +284,35 @@ describe('회수 지점 (T-039)', () => {
       STARTING_RELICS.length,
       `시작 유물 ${STARTING_RELICS.length}종, 슬롯 ${TOTAL_SLOTS}칸`,
     ).toBeGreaterThanOrEqual(TOTAL_SLOTS);
+  });
+
+  it('잡몹 6종이 전부 어딘가에서 나온다 (T-050)', () => {
+    // 유물 둘이 아무 데서도 안 나오던 일(T-062)과 같은 종류의 실수다 —
+    // `MOB_TEMPLATES` 에 적기만 하고 `AREA_MOBS` 에 안 넣으면 조용히 없는 적이 된다.
+    const appearing = new Set(Object.values(AREA_MOBS).flat());
+    const unused = MOB_KINDS.filter((kind) => !appearing.has(kind));
+
+    expect(unused, `어느 지역에도 나오지 않는 잡몹입니다:\n  ${unused.join('\n  ')}`).toEqual([]);
+  });
+
+  it('종류마다 다른 AI 를 쓴다 (T-050)', () => {
+    // **속성만 다르고 행동이 같으면 여섯이어도 싸움은 하나다.**
+    // 여섯이 전부 다를 필요는 없지만(둘은 같은 `brute`), 하나로 몰리면 안 된다.
+    const profiles = new Set(MOB_KINDS.map((kind) => mobProfile(`${kind}-1`).id));
+
+    expect(
+      profiles.size,
+      `잡몹 ${MOB_KINDS.length}종이 AI ${profiles.size}종만 쓴다: ${[...profiles].join(', ')}`,
+    ).toBeGreaterThanOrEqual(4);
+  });
+
+  it('층이 깊어지면 나오는 적이 바뀐다 (T-050)', () => {
+    // 같은 여섯이 어디서나 나오면 내려간 보람이 없다.
+    const entrance = new Set(AREA_MOBS['ruin-entrance'] ?? []);
+    const depths = AREA_MOBS['ruin-depths'] ?? [];
+    const fresh = depths.filter((kind) => !entrance.has(kind));
+
+    expect(fresh.length, '지하에 새로운 적이 하나도 없다').toBeGreaterThan(0);
   });
 
   it('회수 지점은 위험 구역에 있다', () => {

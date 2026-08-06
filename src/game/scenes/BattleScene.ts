@@ -16,7 +16,8 @@ import { itemBlockReason, type Item } from '../../core/battle/item.js';
 import { erosionThreshold, skillBlockReason, type Skill } from '../../core/battle/skill.js';
 import { createRng } from '../../core/rng/index.js';
 import { BATTLE_TUNING, VICTORY_RECOVERY, describeAilments } from '../../data/battle.js';
-import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
+import { MOB_KINDS, ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
+import { showAllMobs } from '../devFlags.js';
 import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
 import { markBattle, markPartyPanel, markScene, type BattlePhase } from '../domState.js';
@@ -103,6 +104,8 @@ export class BattleScene extends Phaser.Scene {
         party: partyForBattle(),
         partySkills: partySkills(),
         inventory: getInventory(),
+        // 타일 번호는 눈으로 봐야 안다 (`devFlags`). 여섯을 한 줄에 세워 놓고 확인한다.
+        ...(showAllMobs() ? { mobCount: MOB_KINDS.length, kinds: MOB_KINDS } : {}),
       });
     this.state = createBattle(
       this.encounter.actors,
