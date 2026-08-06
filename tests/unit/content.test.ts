@@ -27,6 +27,7 @@ import { cleansedErosion, validateFacilities } from '../../src/core/world/facili
 import { CLEANSING, facilitiesForMap } from '../../src/data/facilities.js';
 import { item } from '../../src/data/items.js';
 import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
+import { TOTAL_SLOTS } from '../../src/data/party.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
@@ -254,6 +255,34 @@ describe('회수 지점 (T-039)', () => {
       .map((site) => `${site.id}: ${site.relicId}`);
 
     expect(redundant, `이미 지닌 유물입니다:\n${redundant.join('\n')}`).toEqual([]);
+  });
+
+  it('모든 유물을 손에 넣을 수 있다 (T-062)', () => {
+    // **유물 12종 중 둘이 아무 데서도 나오지 않고 있었다.** 시작 목록에도 회수 지점에도
+    // 없어서 도감을 채울 방법이 없었는데, 아무 테스트도 빨개지지 않았다 — 데이터가
+    // 늘어난 자리와 데이터를 나눠 놓는 자리가 달라서, 둘을 맞춰 보는 사람이 없었다.
+    const obtainable = new Set([
+      ...STARTING_RELICS,
+      ...Object.values(SITES_BY_MAP)
+        .flat()
+        .map((site) => site.relicId),
+    ]);
+
+    const unreachable = Object.keys(RELICS).filter((id) => !obtainable.has(id));
+
+    expect(
+      unreachable,
+      `어디서도 얻을 수 없는 유물입니다 — 도감(T-058)을 채울 방법이 없습니다:\n  ${unreachable.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('시작 유물이 슬롯을 채운다 (T-062)', () => {
+    // 빈 슬롯은 고민이 아니라 그냥 손해다. 파티가 넷이 되며 슬롯이 8 이 됐는데
+    // 시작 유물은 여섯이라 두 칸이 비어 있었다.
+    expect(
+      STARTING_RELICS.length,
+      `시작 유물 ${STARTING_RELICS.length}종, 슬롯 ${TOTAL_SLOTS}칸`,
+    ).toBeGreaterThanOrEqual(TOTAL_SLOTS);
   });
 
   it('회수 지점은 위험 구역에 있다', () => {
