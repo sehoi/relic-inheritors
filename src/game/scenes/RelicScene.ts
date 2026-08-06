@@ -22,6 +22,7 @@ import {
 } from '../partyStore.js';
 import { markRelicScreen, markScene } from '../domState.js';
 import { RELIC_KEYS, hintLine } from '../../data/keys.js';
+import { windowedLines, type ScrollWindow } from '../../core/ui/scroll.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -41,6 +42,17 @@ import type { OverworldEntry } from './OverworldScene.js';
 const LINE = 11;
 const PANEL = 0x0b0c10;
 const BORDER = 0x6f7b8a;
+
+/** 목록 패널(높이 78) 에 들어가는 줄 수. 이보다 길면 창을 넘긴다. */
+const PANEL_ROWS = 6;
+
+/** 얼굴이 서는 자리. 슬롯 글자 오른쪽, 더 있음 표시 왼쪽. */
+const PORTRAIT_X = 166;
+
+interface MoreMarkers {
+  readonly up: Phaser.GameObjects.Text;
+  readonly down: Phaser.GameObjects.Text;
+}
 
 const ELEMENT_NAMES: Readonly<Record<string, string>> = {
   fire: '불',
@@ -91,6 +103,9 @@ export class RelicScene extends Phaser.Scene {
   private noticeText!: Phaser.GameObjects.Text;
   private slotCursor!: Phaser.GameObjects.Text;
   private relicCursor!: Phaser.GameObjects.Text;
+  private slotMore!: MoreMarkers;
+  private relicMore!: MoreMarkers;
+  private readonly portraits = new Map<ActorId, Phaser.GameObjects.Image>();
 
   private keys: BoundKeys = {};
 
@@ -134,6 +149,9 @@ export class RelicScene extends Phaser.Scene {
 
     this.slotCursor = this.marker();
     this.relicCursor = this.marker();
+    // 패널 안쪽 위아래 모서리. 목록 글자와 겹치지 않는 자리다.
+    this.slotMore = { up: this.moreMarker(180, 24), down: this.moreMarker(180, 91) };
+    this.relicMore = { up: this.moreMarker(468, 24), down: this.moreMarker(468, 91) };
 
     this.noticeText = this.add.text(8, 260, '', {
       fontFamily: 'monospace',
@@ -170,13 +188,50 @@ export class RelicScene extends Phaser.Scene {
     });
   }
 
-  /** 슬롯 목록 옆에 얼굴을 세워둔다. 누구의 슬롯인지 이름만으로는 눈에 안 들어온다. */
+  /** 창 밖에 더 있음을 알리는 표시. 패널 오른쪽 위아래 모서리에 하나씩 붙는다. */
+  private moreMarker(x: number, y: number): Phaser.GameObjects.Text {
+    return this.add
+      .text(x, y, '', { fontFamily: 'monospace', fontSize: '8px', color: '#c8a15a' })
+      .setOrigin(1, 0);
+  }
+
+  /**
+   * 위아래로 더 있는지를 알린다.
+   *
+   * **이게 없으면 잘린 목록이 짧은 목록으로 읽힌다** — 유물이 여섯 개뿐이라고 믿게 된다.
+   */
+  private markMore(pair: MoreMarkers, window: ScrollWindow): void {
+    pair.up.setText(window.more.before ? '▲ 위로 더' : '');
+    pair.down.setText(window.more.after ? '▼ 아래로 더' : '');
+  }
+
+  /**
+   * 슬롯 목록 옆에 얼굴을 세워둔다. 누구의 슬롯인지 이름만으로는 눈에 안 들어온다.
+   *
+   * **창이 넘어가므로 자리를 고정할 수 없다.** 예전에는 파티원 순서대로 고정 y 에 놓았는데,
+   * 목록이 여덟 줄이 되어 창을 넘기기 시작하자 얼굴만 제자리에 남아 엉뚱한 줄을 가리켰다.
+   * `render` 가 창에 맞춰 다시 놓는다.
+   */
   private drawPortraits(): void {
-    partyMembers().forEach((member, i) => {
-      this.add
-        .image(178, 40 + i * SLOTS_PER_MEMBER * LINE, CHARACTER_SHEET.key, portraitOf(member.id))
-        .setOrigin(1, 0.5);
-    });
+    for (const member of partyMembers()) {
+      this.portraits.set(
+        member.id,
+        this.add
+          .image(0, 0, CHARACTER_SHEET.key, portraitOf(member.id))
+          .setOrigin(1, 0.5)
+          .setVisible(false),
+      );
+    }
+  }
+
+  /** 창 안에 그 사람의 첫 슬롯이 보일 때만, 그 줄 옆에 얼굴을 놓는다. */
+  private placePortraits(window: ScrollWindow): void {
+    for (const [id, image] of this.portraits) {
+      const first = this.slotRefs.findIndex((ref) => ref.actorId === id);
+      const visible = first >= window.start && first < window.end;
+      image.setVisible(visible);
+      if (visible) image.setPosition(PORTRAIT_X, 40 + (first - window.start) * LINE);
+    }
   }
 
   // ── 조작 ────────────────────────────────────────────────────────────────
@@ -276,12 +331,19 @@ export class RelicScene extends Phaser.Scene {
   private render(): void {
     const loadout = getLoadout();
 
-    const slotLines = this.slotRefs.map((ref) => {
-      const equipped = slotsOf(loadout, ref.actorId)[ref.slot] ?? null;
-      const label = equipped === null ? '(비어 있음)' : relic(equipped).name;
-      return `${ref.name} ${ref.slot + 1}  ${label}`;
-    });
-    this.slotText.setText(slotLines.join('\n'));
+    // **두 목록 다 패널보다 길다.** 파티가 넷이면 슬롯이 여덟이고 유물은 열두 종인데
+    // 패널에는 여섯 줄이 들어간다. 창을 넘겨 보여주고, 잘렸다는 사실을 화살표로 알린다 —
+    // 표시가 없으면 잘린 목록이 짧은 목록으로 읽힌다.
+    const slots = windowedLines(
+      this.slotRefs.map((ref) => {
+        const equipped = slotsOf(loadout, ref.actorId)[ref.slot] ?? null;
+        const label = equipped === null ? '(비어 있음)' : relic(equipped).name;
+        return `${ref.name} ${ref.slot + 1}  ${label}`;
+      }),
+      this.slotIndex,
+      PANEL_ROWS,
+    );
+    this.slotText.setText(slots.lines.join('\n'));
 
     const holders = new Map(
       this.slotRefs
@@ -289,20 +351,29 @@ export class RelicScene extends Phaser.Scene {
         .filter((pair): pair is readonly [string, string] => pair[0] !== null),
     );
 
-    this.relicText.setText(
-      this.owned
-        .map((id) => {
-          const entry = relic(id);
-          const holder = holders.get(id);
-          const where = holder === undefined ? '' : `  — ${holder}`;
-          return `${entry.name}  ${entry.tier}등급 ${ELEMENT_NAMES[entry.element] ?? entry.element}${where}`;
-        })
-        .join('\n'),
+    const relics = windowedLines(
+      this.owned.map((id) => {
+        const entry = relic(id);
+        const holder = holders.get(id);
+        const where = holder === undefined ? '' : `  — ${holder}`;
+        return `${entry.name}  ${entry.tier}등급 ${ELEMENT_NAMES[entry.element] ?? entry.element}${where}`;
+      }),
+      this.relicIndex,
+      PANEL_ROWS,
     );
+    this.relicText.setText(relics.lines.join('\n'));
 
-    this.slotCursor.setPosition(14, 34 + this.slotIndex * LINE).setVisible(this.focus === 'slots');
+    this.markMore(this.slotMore, slots.window);
+    this.markMore(this.relicMore, relics.window);
+    this.placePortraits(slots.window);
+
+    // 커서는 **창 안에서의 자리**를 가리킨다. 목록 전체 인덱스로 두면 창이 넘어간 뒤
+    // 커서만 패널 밖으로 걸어 나간다.
+    this.slotCursor
+      .setPosition(14, 34 + (this.slotIndex - slots.window.start) * LINE)
+      .setVisible(this.focus === 'slots');
     this.relicCursor
-      .setPosition(198, 34 + this.relicIndex * LINE)
+      .setPosition(198, 34 + (this.relicIndex - relics.window.start) * LINE)
       .setVisible(this.focus === 'relics');
 
     this.renderDetail();

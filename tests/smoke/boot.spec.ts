@@ -503,7 +503,7 @@ test('회수 지점에서 유물을 줍고, 저장·로드 뒤에도 사라져 �
   }
 
   // 저장하고 새로 열어 불러온다.
-  await stepKey(page, 'F5');
+  await stepKey(page, 'f');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await stepKey(page, 'Enter');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', /^ok/);
@@ -546,7 +546,7 @@ test('저장한 뒤 새로 열어 이어할 수 있다', async ({ page }) => {
   const where = await page.locator('body').getAttribute('data-player');
   expect(where, '움직이지 않았다').not.toBe('8,6');
 
-  await stepKey(page, 'F5');
+  await stepKey(page, 'f');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'save');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', 'empty,empty,empty');
@@ -613,6 +613,115 @@ test('도움말을 열고 닫는다. 저장 키는 걷기와 겹치지 않는다
   await stepKey(page, 's');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld');
   await expect(page.locator('body')).not.toHaveAttribute('data-player', before ?? '');
+
+  // **메뉴에서도 WASD 로 고른다.** 탐색에서 WASD 로 걷던 손이 메뉴에서 바뀌지 않아야 한다.
+  await stepKey(page, 'f');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '0');
+  await stepKey(page, 's');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '1');
+  await stepKey(page, 'w');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '0');
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 넷이 모인 뒤에도 화면이 안 깨진다 (T-057).
+ *
+ * **파티 패널이 한 사람당 42px 로 잡혀 있어 넷이 되면 셋째부터 화면 밖으로 나갔다.**
+ * 유물 목록도 여섯 줄짜리 패널에 열두 종이 담겨 절반이 안 보였다. 둘 다 시작 인원
+ * 둘로는 드러나지 않아서, 실제로 넷을 모은 사람만 볼 수 있는 버그였다.
+ *
+ * 스모크가 늘 둘로 돌고 있었으므로 스크린샷에도 잡히지 않았다. `?party=full` 이
+ * 그 사각지대를 연다.
+ */
+test('넷이 모여도 전투 패널과 유물 목록이 잘리지 않는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?scene=battle&party=full');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 20_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'command', {
+    timeout: 10_000,
+  });
+
+  // 넷을 다 그렸는가, 그리고 화면(270) 안에서 끝나는가. 둘은 다른 질문이다 —
+  // 넷을 그려도 셋째부터 화면 밖이면 그린 것과 보이는 것이 다르다.
+  await expect(page.locator('body')).toHaveAttribute('data-party-rows', '4');
+
+  const bottom = Number(await page.locator('body').getAttribute('data-party-bottom'));
+  expect(bottom, `파티 패널이 y=${bottom} 에서 끝난다 (화면은 270)`).toBeLessThanOrEqual(270);
+
+  await page.screenshot({ path: `${SHOT_DIR}/battle-four.png` });
+
+  // 유물 화면: 슬롯 8개, 유물 12종. 창이 넘어가는지 커서를 끝까지 내려 확인한다.
+  await page.goto('/?scene=relic&party=full');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'relic', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+
+  const firstSlot = await page.locator('body').getAttribute('data-relic-slot');
+  for (let i = 0; i < 7; i += 1) await stepKey(page, 's');
+  const lastSlot = await page.locator('body').getAttribute('data-relic-slot');
+
+  expect(lastSlot, '슬롯 여덟 개를 다 돌지 못했다').not.toBe(firstSlot);
+  expect(lastSlot, '마지막 슬롯은 넷째 파티원의 것이어야 한다').toContain('seeker');
+
+  await page.screenshot({ path: `${SHOT_DIR}/relic-four.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 유물 도감 (T-058).
+ *
+ * 장착 화면은 *지금 가진 것*으로 무엇을 할지 묻고, 도감은 *무엇이 있는지*에 답한다.
+ * **못 본 유물이 자리는 차지하되 내용은 비어 있어야** 한다 — 자리까지 없으면 몇 개가
+ * 남았는지 알 수 없고, 내용까지 있으면 주웠을 때 새로울 것이 없다.
+ */
+test('도감이 진행률을 보여주고 못 본 유물을 가린다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  await stepKey(page, 'c');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'codex', { timeout: 10_000 });
+
+  // 시작 유물은 여섯, 전체는 열둘. 못 본 여섯이 자리를 차지해야 남은 수가 보인다.
+  await expect(page.locator('body')).toHaveAttribute('data-codex-progress', '6/12');
+  await expect(page.locator('body')).toHaveAttribute('data-codex-hidden', 'no');
+  await page.screenshot({ path: `${SHOT_DIR}/codex.png` });
+
+  // 아래로 내려가면 아직 못 본 유물에 닿는다. 그 칸의 내용은 가려져 있어야 한다.
+  let sawHidden = false;
+  for (let i = 0; i < 11; i += 1) {
+    await stepKey(page, 's');
+    if ((await page.locator('body').getAttribute('data-codex-hidden')) === 'yes') {
+      sawHidden = true;
+      break;
+    }
+  }
+  expect(sawHidden, '못 본 유물이 하나도 없다 — 도감이 전부 펼쳐져 있다').toBe(true);
+  await page.screenshot({ path: `${SHOT_DIR}/codex-hidden.png` });
+
+  // 닫으면 제자리로 돌아온다.
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });

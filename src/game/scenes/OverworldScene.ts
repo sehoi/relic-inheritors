@@ -44,6 +44,7 @@ import {
 import { encountersEnabled } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import type { RelicEntry } from './RelicScene.js';
+import type { CodexEntryParams } from './CodexScene.js';
 import type { SaveEntry } from './SaveScene.js';
 import type { ShopEntry } from './ShopScene.js';
 import { clampCameraCenter, scrollFromCenter, type Viewport } from '../../core/world/camera.js';
@@ -113,6 +114,7 @@ export class OverworldScene extends Phaser.Scene {
   private relicKeys: Phaser.Input.Keyboard.Key[] = [];
   private saveKeys: Phaser.Input.Keyboard.Key[] = [];
   private helpKeys: Phaser.Input.Keyboard.Key[] = [];
+  private codexKeys: Phaser.Input.Keyboard.Key[] = [];
   private keyGuide!: KeyGuide;
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
@@ -215,6 +217,17 @@ export class OverworldScene extends Phaser.Scene {
 
     if (this.saveJustPressed()) {
       this.openSaveScreen();
+      return;
+    }
+
+    if (this.codexJustPressed()) {
+      this.leaving = true;
+      this.scene.start('codex', {
+        returnTo: {
+          mapId: this.mapId,
+          arrival: { position: this.walker.position, facing: this.walker.facing },
+        },
+      } satisfies CodexEntryParams);
       return;
     }
 
@@ -532,6 +545,7 @@ export class OverworldScene extends Phaser.Scene {
       this.relicKeys = [];
       this.saveKeys = [];
       this.helpKeys = [];
+      this.codexKeys = [];
       return;
     }
 
@@ -550,6 +564,7 @@ export class OverworldScene extends Phaser.Scene {
     this.relicKeys = bind(OVERWORLD_KEYS.relic);
     this.saveKeys = bind(OVERWORLD_KEYS.save);
     this.helpKeys = bind(OVERWORLD_KEYS.help);
+    this.codexKeys = bind(OVERWORLD_KEYS.codex);
   }
 
   /**
@@ -570,6 +585,10 @@ export class OverworldScene extends Phaser.Scene {
 
   private helpJustPressed(): boolean {
     return this.helpKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private codexJustPressed(): boolean {
+    return this.codexKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
   }
 
   /** 세이브 화면. 지금 선 자리를 저장 위치로 넘긴다 (T-038). */

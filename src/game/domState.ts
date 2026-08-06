@@ -17,6 +17,7 @@ export const SCENE_KEYS = [
   'overworld',
   'battle',
   'relic',
+  'codex',
   'save',
   'shop',
 ] as const;
@@ -134,6 +135,35 @@ export function markShop(state: {
 /** 파티 레벨 (T-044). 전투를 이겨 레벨이 올랐는지 스모크가 이걸로 판정한다. */
 export function markLevel(level: number): void {
   document.body.dataset['level'] = String(level);
+}
+
+/**
+ * 도감 상태 (T-058).
+ *
+ * `hidden` 이 중요하다 — **못 본 유물의 내용이 새어 나가지 않는지**를 화면 밖에서
+ * 확인할 방법이 이것뿐이다. 스크린샷으로는 "가려져 보이는 것" 과 "가려진 것" 이 같아 보인다.
+ */
+export function markCodex(state: {
+  relic: string;
+  found: number;
+  total: number;
+  hidden: boolean;
+}): void {
+  document.body.dataset['codexRelic'] = state.relic;
+  document.body.dataset['codexProgress'] = `${state.found}/${state.total}`;
+  document.body.dataset['codexHidden'] = state.hidden ? 'yes' : 'no';
+}
+
+/**
+ * 파티 패널이 몇 명을 그렸고 어디서 끝나는가 (T-057).
+ *
+ * **인원이 늘면 조용히 화면 밖으로 밀려난다.** 한 사람당 42px 로 잡혀 있어 넷이 되자
+ * 셋째부터 잘렸는데, 잘린 쪽은 그냥 안 보일 뿐이라 예외도 콘솔 에러도 나지 않는다.
+ * 스모크가 "넷을 그렸는가" 와 "화면 안에서 끝나는가" 를 따로 물을 수 있어야 한다.
+ */
+export function markPartyPanel(rows: number, bottom: number): void {
+  document.body.dataset['partyRows'] = String(rows);
+  document.body.dataset['partyBottom'] = String(Math.round(bottom));
 }
 
 /**

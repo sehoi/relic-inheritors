@@ -19,7 +19,7 @@ import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
 import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
-import { markBattle, markScene, type BattlePhase } from '../domState.js';
+import { markBattle, markPartyPanel, markScene, type BattlePhase } from '../domState.js';
 import {
   getInventory,
   partyForBattle,
@@ -39,6 +39,11 @@ import type { OverworldEntry } from './OverworldScene.js';
 
 /** 이벤트 하나를 보여주는 시간. 너무 빠르면 무슨 일이 있었는지 읽을 수 없다. */
 const EVENT_DELAY = 260;
+
+/** 파티 패널의 자리. 화면이 270px 이므로 아래로 더 늘릴 수 없다 — 인원은 여기서 나눈다. */
+const PANEL_TOP = 158;
+const PANEL_HEIGHT = 104;
+const PANEL_PAD = 6;
 
 export interface BattleEntry {
   readonly encounter?: Encounter;
@@ -161,37 +166,48 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * 파티 상태 패널.
+   *
+   * **한 사람당 42px 로 잡혀 있었다.** 파티가 둘이던 시절의 값이라 넷이 되자 셋째부터
+   * 화면(270px) 밖으로 나갔다 — 뒤의 두 사람은 HP 도 침식도 볼 수 없었다.
+   * 인원에 맞춰 줄이는 대신 **인원으로 나눈다.** 다섯이 되어도 잘리지 않는다.
+   */
   private buildPartyPanel(): void {
     const party = this.state.actors.filter((a) => a.side === 'party');
-    this.add.rectangle(8, 168, 316, 94, 0x0b0c10).setOrigin(0, 0).setStrokeStyle(1, 0x6f7b8a);
+    this.add.rectangle(8, PANEL_TOP, 316, PANEL_HEIGHT, 0x0b0c10)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x6f7b8a);
+
+    const row = Math.floor((PANEL_HEIGHT - PANEL_PAD * 2) / Math.max(1, party.length));
 
     party.forEach((member, i) => {
-      const top = 176 + i * 42;
+      const top = PANEL_TOP + PANEL_PAD + i * row;
 
       // 전투는 프론트뷰다 (GDD §6.2). 이름만 있으면 누가 누구인지 이름표로만 알게 되는데,
       // 유물을 누구에게 줄지 고르는 게임에서 그건 부족하다.
-      this.add.image(22, top + 10, CHARACTER_SHEET.key, portraitOf(member.id));
+      this.add.image(22, top + 8, CHARACTER_SHEET.key, portraitOf(member.id));
 
       this.partyLabels.set(
         member.id,
         this.add.text(36, top, member.name, {
           fontFamily: 'monospace',
-          fontSize: '11px',
+          fontSize: '10px',
           color: '#e8e3d3',
         }),
       );
 
       this.partyGauges.set(member.id, {
-        hp: new Gauge(this, 108, top + 1, 84, 7, 0xb0304a),
-        mp: new Gauge(this, 108, top + 11, 84, 5, 0x4a72b0),
+        hp: new Gauge(this, 108, top + 1, 84, 6, 0xb0304a),
+        mp: new Gauge(this, 108, top + 9, 84, 4, 0x4a72b0),
         // 침식은 찰수록 나쁘다. 붉은 보라로 다른 축임을 알린다.
-        erosion: new Gauge(this, 222, top + 1, 90, 7, 0x8a4ab0),
+        erosion: new Gauge(this, 222, top + 1, 90, 6, 0x8a4ab0),
       });
 
       // 막대 색만으로는 무엇인지 알 수 없다. 좁은 자리라 두 글자로 줄인다.
       for (const [label, offsetY, color] of [
         ['HP', 0, '#b0304a'],
-        ['MP', 10, '#4a72b0'],
+        ['MP', 8, '#4a72b0'],
       ] as const) {
         this.add
           .text(104, top + offsetY, label, {
@@ -207,6 +223,7 @@ export class BattleScene extends Phaser.Scene {
         .setOrigin(1, 0);
     });
 
+    markPartyPanel(party.length, PANEL_TOP + PANEL_PAD + party.length * row);
     this.refreshPanel();
   }
 

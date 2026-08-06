@@ -4,6 +4,7 @@ import { TitleScene } from './game/scenes/TitleScene.js';
 import { OverworldScene } from './game/scenes/OverworldScene.js';
 import { BattleScene } from './game/scenes/BattleScene.js';
 import { RelicScene } from './game/scenes/RelicScene.js';
+import { CodexScene } from './game/scenes/CodexScene.js';
 import { SaveScene } from './game/scenes/SaveScene.js';
 import { ShopScene } from './game/scenes/ShopScene.js';
 
@@ -29,6 +30,7 @@ const config: Phaser.Types.Core.GameConfig = {
     OverworldScene,
     BattleScene,
     RelicScene,
+    CodexScene,
     SaveScene,
     ShopScene,
   ],

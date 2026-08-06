@@ -22,3 +22,17 @@ export function startingScene(): 'battle' | 'relic' | 'title' {
 export function encountersEnabled(): boolean {
   return flag('encounters') !== 'off';
 }
+
+/**
+ * `?party=full` 이면 동료를 전부 합류시킨 채로 시작한다.
+ *
+ * **화면이 인원에 따라 깨지는 것을 인원 없이 확인할 수 없다.** 파티 패널이 한 사람당
+ * 42px 로 잡혀 있어 넷이 되면 셋째부터 화면 밖으로 나갔는데, 스모크가 늘 시작 인원 둘로
+ * 돌아서 스크린샷에도 잡히지 않았다 — 실제로 넷을 모은 사람만 볼 수 있는 버그였다.
+ *
+ * 유적을 가로질러 동료를 모으는 것을 스모크가 매번 하게 할 수는 없다. 그 여정은 다른
+ * 테스트가 볼 일이고, 여기서 필요한 것은 **넷인 상태의 화면**뿐이다.
+ */
+export function startWithFullParty(): boolean {
+  return flag('party') === 'full';
+}

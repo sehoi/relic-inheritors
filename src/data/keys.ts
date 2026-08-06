@@ -35,39 +35,57 @@ export const OVERWORLD_KEYS = {
   right: { label: '오른쪽', keys: ['RIGHT', 'D'], group: MOVE },
   interact: { label: '조사 · 대화', keys: ['SPACE', 'ENTER'] },
   relic: { label: '유물 장착', keys: ['R'] },
-  // **`S` 에서 옮겼다.** 아래로 걷기와 겹쳐 한 칸 내려갈 때마다 세이브 화면이 열렸다.
-  // `F5` 는 PC 게임의 관례이고, 무엇보다 이동 키와 겹칠 일이 없다.
-  save: { label: '저장', keys: ['F5'] },
+  /**
+   * **`S` → `F5` → `F` 로 두 번 옮겼다.**
+   *
+   * `S` 는 아래로 걷기와 겹쳐 한 칸 내려갈 때마다 세이브 화면이 열렸다. `F5` 는 그 문제를
+   * 풀었지만 펑션키를 누르러 손을 옮겨야 했다 — 나머지 조작이 전부 왼손 자리에 모여 있는데
+   * 저장만 벗어나 있었다. `F` 는 왼손 자리이면서 이동·기존 키와 겹치지 않는다.
+   */
+  save: { label: '저장', keys: ['F'] },
+  codex: { label: '유물 도감', keys: ['C'] },
   help: { label: '도움말', keys: ['H'] },
 } as const satisfies SceneKeys;
 
+export const CODEX_KEYS = {
+  up: { label: '위', keys: ['UP', 'W'], group: '넘기기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '넘기기' },
+  cancel: { label: '닫기', keys: ['ESC', 'Q'] },
+} as const satisfies SceneKeys;
+
+/**
+ * 메뉴 화면들도 WASD 를 받는다.
+ *
+ * 탐색에서 WASD 로 걷던 사람이 메뉴에서만 방향키로 손을 옮겨야 했다. **한 게임 안에서
+ * 조작을 두 벌 익히게 하지 않는다** — 화면이 바뀌었다고 손이 바뀔 이유는 없다.
+ */
 export const BATTLE_KEYS = {
-  up: { label: '위', keys: ['UP'], group: '고르기' },
-  down: { label: '아래', keys: ['DOWN'], group: '고르기' },
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
   confirm: { label: '결정', keys: ['ENTER', 'SPACE'] },
-  cancel: { label: '취소', keys: ['ESC'] },
+  cancel: { label: '취소', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
 
 export const RELIC_KEYS = {
-  up: { label: '위', keys: ['UP'], group: '고르기' },
-  left: { label: '왼쪽', keys: ['LEFT'], group: '고르기' },
-  down: { label: '아래', keys: ['DOWN'], group: '고르기' },
-  right: { label: '오른쪽', keys: ['RIGHT'], group: '고르기' },
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  left: { label: '왼쪽', keys: ['LEFT', 'A'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
+  right: { label: '오른쪽', keys: ['RIGHT', 'D'], group: '고르기' },
   confirm: { label: '끼우기 · 빼기', keys: ['ENTER', 'SPACE'] },
   cancel: { label: '닫기', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
 
 export const SAVE_KEYS = {
-  up: { label: '위', keys: ['UP'], group: '고르기' },
-  down: { label: '아래', keys: ['DOWN'], group: '고르기' },
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
   confirm: { label: '저장 · 불러오기', keys: ['ENTER', 'SPACE'] },
   erase: { label: '지우기', keys: ['DELETE'] },
   cancel: { label: '닫기', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
 
 export const SHOP_KEYS = {
-  up: { label: '위', keys: ['UP'], group: '고르기' },
-  down: { label: '아래', keys: ['DOWN'], group: '고르기' },
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
   confirm: { label: '사기', keys: ['ENTER', 'SPACE'] },
   cancel: { label: '나가기', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
@@ -82,6 +100,7 @@ export const KEY_GUIDE: readonly { readonly scene: string; readonly keys: SceneK
   { scene: '탐색', keys: OVERWORLD_KEYS },
   { scene: '전투', keys: BATTLE_KEYS },
   { scene: '유물', keys: RELIC_KEYS },
+  { scene: '도감', keys: CODEX_KEYS },
   { scene: '저장', keys: SAVE_KEYS },
   { scene: '상점', keys: SHOP_KEYS },
   { scene: '타이틀', keys: TITLE_KEYS },
