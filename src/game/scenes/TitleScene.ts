@@ -5,6 +5,7 @@ import { joinFullPartyIfRequested } from '../devFlags.js';
 import { resetClock, startClock } from '../playtime.js';
 import { browserStorage, readAllSlots } from '../save/storage.js';
 import type { SaveEntry } from './SaveScene.js';
+import type { OverworldEntry } from './OverworldScene.js';
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -71,7 +72,14 @@ export class TitleScene extends Phaser.Scene {
       joinFullPartyIfRequested(joinMember);
       resetClock();
       startClock(Date.now());
-      this.scene.start('overworld');
+      /**
+       * **빈 값을 명시해서 넘긴다.**
+       *
+       * 인자를 생략하면 Phaser 가 그 씬에 마지막으로 넘긴 데이터를 그대로 남겨둔다.
+       * 그래서 전멸 → 타이틀 → 새로 시작 을 하면 **죽은 자리에서 다시 시작했다** —
+       * 파티는 새것인데 위치만 지난 회차의 것이었다.
+       */
+      this.scene.start('overworld', {} satisfies OverworldEntry);
     });
   }
 }

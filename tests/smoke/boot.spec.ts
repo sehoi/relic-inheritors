@@ -912,6 +912,129 @@ test('성소의 보스와 싸워 유물을 얻는다', async ({ page }) => {
 });
 
 /**
+ * 새로 시작하면 처음부터다 (T-064).
+ *
+ * **씬 데이터가 남아 있었다.** 타이틀에서 새 게임을 시작할 때 위치를 안 넘겼더니
+ * Phaser 가 그 씬에 마지막으로 넘긴 값을 그대로 썼고, 그래서 전멸 → 타이틀 →
+ * 새로 시작 을 하면 **죽은 자리에서 다시 시작했다.** 파티는 새것인데 위치만 지난 회차였다.
+ */
+test('전멸한 뒤 새로 시작하면 시작 지점이다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  /**
+   * ⚠️ **이 테스트는 씬 데이터 잔존 자체를 재현하지 못한다.**
+   *
+   * 버그는 **한 세션 안에서** overworld 를 거쳐 타이틀로 돌아왔을 때 난다. 그 경로는
+   * 전멸뿐인데, 전멸을 확실히 만들려면 강한 적 앞에 세워야 하고 거기 세우려면 `?at=` 이
+   * 필요하다 — 그런데 `?at=` 은 새 게임에도 걸리므로 "시작 지점에서 시작했는가" 를
+   * 물을 수 없게 된다. 둘을 동시에 만족하는 배치를 찾지 못했다.
+   *
+   * 그래서 여기서는 **전멸이 타이틀로 이어지는가**까지만 본다. 새 게임의 시작 자리는
+   * 아래 `?at=` 없는 경로가 지킨다 — 씬 데이터가 남은 상태는 아니지만,
+   * 적어도 "새 게임이 시작 맵에서 시작한다" 는 성질은 붙들어 둔다.
+   */
+  await page.goto('/?encounters=off&at=ruin-sanctum:33,8');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-sanctum', { timeout: 10_000 });
+
+  await stepKey(page, 'ArrowRight');
+  await stepKey(page, 'Space');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 10_000 });
+
+  // 성소의 보스는 파티 Lv1 에게 이길 방법이 없다 (실측 Lv8 에 3%).
+  // 전투가 끝날 때까지만 누른다 — 끝난 뒤에도 누르면 타이틀을 지나쳐 새 게임이 시작된다.
+  for (let i = 0; i < 300; i += 1) {
+    if ((await page.locator('body').getAttribute('data-battle-phase')) === 'over') break;
+    await page.keyboard.press('Enter', { delay: 30 });
+  }
+  await expect(page.locator('body'), '보스에게 이겨버렸다').toHaveAttribute(
+    'data-battle-outcome',
+    'defeat',
+  );
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body'), '전멸했는데 타이틀로 나가지 않았다').toHaveAttribute(
+    'data-scene',
+    'title',
+    { timeout: 10_000 },
+  );
+
+  // ── 새 게임은 시작 지점에서 (`?at=` 없이) ──────────────────────────────
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,6');
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 메뉴의 저장과 이어하기가 서로 다른 화면을 연다 (T-064).
+ *
+ * **모드를 안 넘겨 "저장" 이 불러오기 화면을 열고 있었다.** 두 화면이 비슷하게 생겨서
+ * 눈으로도 안 띄었다 — 슬롯 목록에 커서가 있는 것은 똑같다.
+ */
+test('메뉴의 저장과 이어하기가 각각 제 모드로 열린다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  const openMenu = async (item: string): Promise<void> => {
+    await stepKey(page, 'Escape');
+    await expect(page.locator('body')).toHaveAttribute('data-scene', 'menu', { timeout: 10_000 });
+    for (let i = 0; i < 8; i += 1) {
+      if ((await page.locator('body').getAttribute('data-menu-item')) === item) return;
+      await stepKey(page, 's');
+    }
+    throw new Error(`메뉴에서 "${item}" 을 찾지 못했다`);
+  };
+
+  await openMenu('저장');
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body'), '저장을 골랐는데 불러오기가 열렸다').toHaveAttribute(
+    'data-save-mode',
+    'save',
+  );
+
+  // 취소하면 걷던 자리로 돌아온다 — 타이틀로 튕기지 않는다.
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  await openMenu('이어하기');
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'load');
+  await page.screenshot({ path: `${SHOT_DIR}/menu-load.png` });
+
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 잡몹 여섯 종이 한 화면에 선다 (T-050).
  *
  * **타일 번호는 눈으로 봐야 안다.** 시트에서 번호만 보고 고르면 "떠도는 불씨" 자리에
