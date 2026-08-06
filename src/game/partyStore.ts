@@ -29,6 +29,7 @@ import {
   type Resonance,
 } from '../core/relic/resonance.js';
 import { ALL_RESONANCES } from '../data/resonances.js';
+import { LEVEL_UP_RECOVERY } from '../data/battle.js';
 import { starterParty } from '../data/encounters.js';
 import { ROSTER, STARTING_MEMBERS } from '../data/party.js';
 import { LEVEL_CURVE } from '../data/progression.js';
@@ -130,13 +131,14 @@ export function buyItem(
 export function restAtInn(price: number): number | undefined {
   if (price > coins) return undefined;
 
+  // **최대치는 유물 보정까지 얹은 값이어야 한다** (`partyForBattle`). 기본 스탯으로 채우면
+  // 최대 HP 를 올려주는 유물을 낀 파티는 여관에서 자도 영영 가득 차지 않는다.
   const next: Record<ActorId, Vitals> = {};
-  for (const member of basePartyMembers()) {
-    const saved = vitals?.[member.id];
+  for (const member of partyForBattle()) {
     next[member.id] = {
       hp: member.stats.maxHp,
       mp: member.stats.maxMp,
-      erosion: saved?.erosion ?? 0,
+      erosion: member.erosion,
       ailments: [],
     };
   }
@@ -161,9 +163,10 @@ export function totalExp(): number {
 /**
  * 경험치를 얻는다. 레벨이 올랐으면 오른 레벨을 돌려준다.
  *
- * **레벨업은 완전 회복을 겸한다.** 유적 안에서 회복할 방법이 이것뿐이고(거점은 T-040),
- * 회복 없는 소모전은 실측에서 평균 6판 만에 전멸했다. "한 판만 더 버티면 오른다" 가
- * 탐색을 이어갈 이유가 된다.
+ * **레벨업은 회복을 겸하되 완전 회복은 아니다** (`LEVEL_UP_RECOVERY`, T-049c).
+ * 유적 안에서 회복할 방법이 이것뿐이고(거점은 T-040), 회복 없는 소모전은 실측에서
+ * 평균 6판 만에 전멸했다. "한 판만 더 버티면 오른다" 가 탐색을 이어갈 이유가 된다 —
+ * 다만 그 이유를 남기는 데 완전 회복까지는 필요 없었다.
  */
 export function gainExp(amount: number): number | undefined {
   if (amount <= 0) return undefined;
@@ -173,9 +176,22 @@ export function gainExp(amount: number): number | undefined {
   const after = partyLevel();
   if (after === before) return undefined;
 
-  // 최대치는 새 레벨 기준이다. 그래서 vitals 를 지우는 것으로 완전 회복이 된다 —
-  // 여기서 숫자를 직접 채우면 유물 보정과 어긋난다.
-  vitals = undefined;
+  // 최대치는 **오른 레벨 기준**이고 유물 보정까지 얹은 값이다 (`partyForBattle`).
+  const heal = (current: number, max: number, ratio: number): number =>
+    Math.min(max, current + Math.round(max * ratio));
+
+  const next: Record<ActorId, Vitals> = {};
+  for (const member of partyForBattle()) {
+    next[member.id] = {
+      hp: heal(member.hp, member.stats.maxHp, LEVEL_UP_RECOVERY.hpRatio),
+      mp: heal(member.mp, member.stats.maxMp, LEVEL_UP_RECOVERY.mpRatio),
+      // 침식은 남는다. 그건 정화소의 몫이다 — 한 자리에서 다 해결되면 다른 자리에 갈 이유가 없다.
+      erosion: member.erosion,
+      ailments: [],
+    };
+  }
+
+  vitals = next;
   return after;
 }
 
