@@ -9,6 +9,7 @@ import {
 import {
   captureSave,
   currentResonances,
+  gainCoins,
   getAttunement,
   getInventory,
   getLoadout,
@@ -18,6 +19,7 @@ import {
   partyForBattle,
   partySkills,
   resetParty,
+  restAtInn,
   restoreSave,
   saveInventory,
   saveParty,
@@ -30,6 +32,7 @@ import {
   validateSaveReferences,
   type SavedLocation,
 } from '../../src/core/save/index.js';
+import { LEVEL_UP_RECOVERY } from '../../src/data/battle.js';
 import { ITEMS } from '../../src/data/items.js';
 import { MAP_IDS } from '../../src/data/maps.js';
 import { RELICS, relic } from '../../src/data/relics.js';
@@ -200,20 +203,67 @@ describe('partyStore', () => {
       expect(partyForBattle()[0]?.mp).toBe(0);
     });
 
-    it('레벨이 오르면 완전 회복이 MP 회복을 덮는다', () => {
-      // 레벨업 회복이 먼저 적용되면 MP 회복이 사라진 것처럼 보인다. 순서가 중요하다.
+    it('레벨이 오르면 최대치의 일부가 돌아온다 (T-049c)', () => {
+      // **완전 회복이 아니다.** 완전 회복이던 시절에는 소모전이 사라졌다 —
+      // 이기는 동안 자원이 계속 채워져, 지는 방식이 "한 판을 진다" 하나만 남았다.
       const result = settleVictory(drained(), getInventory(), {}, 2, 10_000, RECOVERY);
       expect(result.levelledTo).toBeDefined();
+
       for (const member of partyForBattle()) {
-        expect(member.hp).toBe(member.stats.maxHp);
-        expect(member.mp).toBe(member.stats.maxMp);
+        const healed = 20 + Math.round(member.stats.maxHp * LEVEL_UP_RECOVERY.hpRatio);
+        expect(member.hp).toBe(Math.min(member.stats.maxHp, healed));
+        // 바닥에서 올라왔으므로 아직 최대치는 아니어야 한다 — 그러지 않으면 다시 완전 회복이다.
+        expect(member.hp).toBeLessThan(member.stats.maxHp);
       }
+    });
+
+    it('레벨업 회복이 MP 회복을 덮지 않는다', () => {
+      // 레벨업 회복이 먼저 적용되면 MP 회복이 사라진 것처럼 보인다. 순서가 중요하다.
+      // 완전 회복이던 시절에는 이 성질을 잴 수 없었다 — 어느 쪽이든 최대치였기 때문이다.
+      const withoutKills = settleVictory(drained(), getInventory(), {}, 0, 10_000, RECOVERY);
+      const mpWithoutKills = partyForBattle().map((m) => m.mp);
+
+      resetParty();
+      const withKills = settleVictory(drained(), getInventory(), {}, 3, 10_000, RECOVERY);
+
+      expect(withoutKills.levelledTo).toBeDefined();
+      expect(withKills.levelledTo).toBeDefined();
+      partyForBattle().forEach((member, i) => {
+        expect(member.mp).toBe((mpWithoutKills[i] ?? 0) + 3);
+      });
     });
 
     it('숙련도와 소지품도 함께 반영된다', () => {
       settleVictory(drained(), { herb: 1 }, { 'ember-lash': 4 }, 1, 0, RECOVERY);
       expect(getInventory()).toEqual({ herb: 1 });
       expect(relicRanks()['ember-coil']).toBe(1);
+    });
+  });
+
+  describe('여관 (T-049c)', () => {
+    it('최대 HP 를 올려주는 유물을 껴도 가득 찬다', () => {
+      // **조용히 틀리던 곳이다.** 여관이 기본 스탯으로 채우고 있어서, 최대 HP 를 올리는
+      // 유물을 낀 파티는 자고 나와도 그 유물이 준 만큼이 영영 비어 있었다.
+      // 화면에는 "HP 252/270" 처럼 보이는데 여관은 제 할 일을 다 했다고 말한다.
+      const member = partyForBattle()[0];
+      if (member === undefined) throw new Error('파티가 비어 있습니다');
+
+      const bare = member.stats.maxHp;
+      setLoadout({ ...getLoadout(), [member.id]: ['bulwark-ring', null] });
+
+      const equipped = partyForBattle()[0];
+      expect(equipped?.stats.maxHp, '유물이 최대 HP 를 올려야 이 테스트가 성립한다').toBeGreaterThan(
+        bare,
+      );
+
+      saveParty(partyForBattle().map((m) => ({ ...m, hp: 1, mp: 0 })));
+      gainCoins(999);
+      expect(restAtInn(10)).toBe(10);
+
+      for (const rested of partyForBattle()) {
+        expect(rested.hp, rested.id).toBe(rested.stats.maxHp);
+        expect(rested.mp, rested.id).toBe(rested.stats.maxMp);
+      }
     });
   });
 
