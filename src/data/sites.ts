@@ -15,7 +15,11 @@ export const SITES_BY_MAP: Readonly<Partial<Record<MapId, readonly RelicSite[]>>
     // 기둥 홀 한가운데. 야영지에서 나와야 닿는다.
     { id: 'pillar-cache', position: { x: 32, y: 8 }, relicId: 'bulwark-ring' },
     // 남쪽 안뜰. 서편 방을 지나 한참 돌아야 나온다.
-    { id: 'south-cache', position: { x: 40, y: 30 }, relicId: 'brine-crown' },
+    //
+    // **멀리 갈수록 좋은 것이 나와야 한다.** 예전에는 여기서 1등급(`brine-crown`)이 나왔다 —
+    // 맵을 한참 돌아 도착해서 시작 유물과 같은 급을 줍는 것은 김이 빠진다. 그 유물은
+    // 시작 목록으로 옮기고 여기에는 3등급을 둔다.
+    { id: 'south-cache', position: { x: 40, y: 30 }, relicId: 'ember-crown' },
   ],
 
   'ruin-depths': [
