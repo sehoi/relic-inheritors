@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { OVERWORLD_KEYS, keyName } from '../../data/keys.js';
 
 /**
  * 현재 위치 표시.
@@ -21,6 +22,7 @@ export class LocationBanner {
   private readonly placeText: Phaser.GameObjects.Text;
   private readonly levelText: Phaser.GameObjects.Text;
   private readonly stateText: Phaser.GameObjects.Text;
+  private readonly helpText: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene) {
     this.background = scene.add
@@ -46,8 +48,28 @@ export class LocationBanner {
       color: SAFE_COLOR,
     });
 
+    /**
+     * 도움말 여는 법.
+     *
+     * **닫아둘 수 있는 안내에는 여는 방법이 화면에 남아야 한다.** 그러지 않으면
+     * 조작을 모르는 사람에게는 없는 기능과 같다 — 도움말을 여는 법을 도움말이 알려주는 꼴이 된다.
+     */
+    this.helpText = scene.add.text(0, PADDING, `${keyName(OVERWORLD_KEYS.help.keys[0] ?? 'H')} ${OVERWORLD_KEYS.help.label}`, {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#6f7b8a',
+    });
+
+    // ⚠️ `levelText` 가 이 목록에서 빠져 있었다. 씬에는 붙어 있어 화면에 뜨기는 했지만
+    // 컨테이너 밖이라 `setScrollFactor(0)` 이 걸리지 않아, 걸을 때마다 카메라를 따라 흘렀다.
     scene.add
-      .container(MARGIN, MARGIN, [this.background, this.placeText, this.stateText])
+      .container(MARGIN, MARGIN, [
+        this.background,
+        this.placeText,
+        this.levelText,
+        this.stateText,
+        this.helpText,
+      ])
       .setScrollFactor(0)
       .setDepth(900);
   }
@@ -70,6 +92,8 @@ export class LocationBanner {
     this.stateText.setColor(encounters ? WILD_COLOR : SAFE_COLOR);
     this.stateText.setX(this.levelText.x + this.levelText.width + 8);
 
-    this.background.setSize(this.stateText.x + this.stateText.width + PADDING, HEIGHT);
+    this.helpText.setX(this.stateText.x + this.stateText.width + 12);
+
+    this.background.setSize(this.helpText.x + this.helpText.width + PADDING, HEIGHT);
   }
 }

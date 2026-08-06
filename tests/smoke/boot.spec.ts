@@ -503,7 +503,7 @@ test('회수 지점에서 유물을 줍고, 저장·로드 뒤에도 사라져 �
   }
 
   // 저장하고 새로 열어 불러온다.
-  await stepKey(page, 's');
+  await stepKey(page, 'F5');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await stepKey(page, 'Enter');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', /^ok/);
@@ -546,7 +546,7 @@ test('저장한 뒤 새로 열어 이어할 수 있다', async ({ page }) => {
   const where = await page.locator('body').getAttribute('data-player');
   expect(where, '움직이지 않았다').not.toBe('8,6');
 
-  await stepKey(page, 's');
+  await stepKey(page, 'F5');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'save');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', 'empty,empty,empty');
@@ -572,6 +572,47 @@ test('저장한 뒤 새로 열어 이어할 수 있다', async ({ page }) => {
     timeout: 10_000,
   });
   await expect(page.locator('body')).toHaveAttribute('data-player', where ?? '');
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 조작 안내를 열고 닫는다 (T-055).
+ *
+ * **`S` 가 아래로 걷기이면서 저장이던 버그가 이 태스크의 출발점이었다.** 배치가
+ * `data/keys.ts` 로 옮겨가고 유닛 테스트가 겹침을 막지만, 그 데이터가 화면의 실제
+ * 조작과 이어져 있다는 것은 여기서만 확인된다 — 데이터만 고치고 씬을 안 고쳐도
+ * 유닛 테스트는 전부 초록이다.
+ */
+test('도움말을 열고 닫는다. 저장 키는 걷기와 겹치지 않는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  await expect(page.locator('body')).toHaveAttribute('data-help', 'closed');
+
+  await stepKey(page, 'h');
+  await expect(page.locator('body')).toHaveAttribute('data-help', 'open');
+  await page.screenshot({ path: `${SHOT_DIR}/help.png` });
+
+  await stepKey(page, 'h');
+  await expect(page.locator('body')).toHaveAttribute('data-help', 'closed');
+
+  // **아래로 걸어도 세이브 화면이 열리지 않는다.** 이게 원래 버그였다.
+  const before = await page.locator('body').getAttribute('data-player');
+  await stepKey(page, 's');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld');
+  await expect(page.locator('body')).not.toHaveAttribute('data-player', before ?? '');
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });

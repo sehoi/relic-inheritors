@@ -21,6 +21,8 @@ import {
   setLoadout,
 } from '../partyStore.js';
 import { markRelicScreen, markScene } from '../domState.js';
+import { RELIC_KEYS, hintLine } from '../../data/keys.js';
+import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -90,7 +92,7 @@ export class RelicScene extends Phaser.Scene {
   private slotCursor!: Phaser.GameObjects.Text;
   private relicCursor!: Phaser.GameObjects.Text;
 
-  private keys: Record<string, Phaser.Input.Keyboard.Key> = {};
+  private keys: BoundKeys = {};
 
   constructor() {
     super('relic');
@@ -118,7 +120,7 @@ export class RelicScene extends Phaser.Scene {
     this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x10131b).setOrigin(0, 0);
     this.add.text(8, 5, '유물 장착', { fontFamily: 'monospace', fontSize: '12px', color: '#c8a15a' });
     this.add
-      .text(472, 6, '↑↓ 고르기  ←→ 칸 옮기기  Enter 장착/해제  Esc 닫기', {
+      .text(472, 6, hintLine(RELIC_KEYS), {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#6f7b8a',
@@ -183,28 +185,17 @@ export class RelicScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
 
-    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
-    this.keys = {
-      up: key('UP'),
-      down: key('DOWN'),
-      left: key('LEFT'),
-      right: key('RIGHT'),
-      confirm: key('ENTER'),
-      confirm2: key('SPACE'),
-      cancel: key('ESC'),
-      cancel2: key('Q'),
-    };
+    this.keys = bindSceneKeys(keyboard, RELIC_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {
-    return names.some((name) => {
-      const key = this.keys[name];
-      return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
-    });
+    return names.some((name) =>
+      (this.keys[name] ?? []).some((key) => Phaser.Input.Keyboard.JustDown(key)),
+    );
   }
 
   override update(): void {
-    if (this.pressed('cancel', 'cancel2')) {
+    if (this.pressed('cancel')) {
       this.close();
       return;
     }
@@ -226,7 +217,7 @@ export class RelicScene extends Phaser.Scene {
       return;
     }
 
-    if (this.pressed('confirm', 'confirm2')) this.activate();
+    if (this.pressed('confirm')) this.activate();
   }
 
   private move(step: number): void {

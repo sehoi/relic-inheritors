@@ -16,6 +16,8 @@ import {
   type SlotState,
 } from '../save/storage.js';
 import { markSaveScreen, markScene } from '../domState.js';
+import { SAVE_KEYS, hintLine } from '../../data/keys.js';
+import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -53,7 +55,7 @@ export class SaveScene extends Phaser.Scene {
   private slotTexts: Phaser.GameObjects.Text[] = [];
   private noticeText!: Phaser.GameObjects.Text;
   private cursor!: Phaser.GameObjects.Text;
-  private keys: Record<string, Phaser.Input.Keyboard.Key> = {};
+  private keys: BoundKeys = {};
 
   constructor() {
     super('save');
@@ -76,7 +78,7 @@ export class SaveScene extends Phaser.Scene {
       color: '#c8a15a',
     });
     this.add
-      .text(472, 8, `↑↓ 고르기  Enter ${this.mode === 'save' ? '저장' : '불러오기'}  Del 지우기  Esc 닫기`, {
+      .text(472, 8, hintLine(SAVE_KEYS), {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#6f7b8a',
@@ -123,27 +125,17 @@ export class SaveScene extends Phaser.Scene {
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
-    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
-    this.keys = {
-      up: key('UP'),
-      down: key('DOWN'),
-      confirm: key('ENTER'),
-      confirm2: key('SPACE'),
-      erase: key('DELETE'),
-      cancel: key('ESC'),
-      cancel2: key('Q'),
-    };
+    this.keys = bindSceneKeys(keyboard, SAVE_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {
-    return names.some((name) => {
-      const key = this.keys[name];
-      return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
-    });
+    return names.some((name) =>
+      (this.keys[name] ?? []).some((key) => Phaser.Input.Keyboard.JustDown(key)),
+    );
   }
 
   override update(): void {
-    if (this.pressed('cancel', 'cancel2')) {
+    if (this.pressed('cancel')) {
       this.close();
       return;
     }
@@ -161,7 +153,7 @@ export class SaveScene extends Phaser.Scene {
       this.erase();
       return;
     }
-    if (this.pressed('confirm', 'confirm2')) this.activate();
+    if (this.pressed('confirm')) this.activate();
   }
 
   private activate(): void {

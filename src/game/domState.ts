@@ -136,6 +136,16 @@ export function markLevel(level: number): void {
   document.body.dataset['level'] = String(level);
 }
 
+/**
+ * 조작 안내가 떠 있는가 (T-055).
+ *
+ * 안내는 **글자로만 존재하는 UI** 라 화면에 떴는지 자동으로 확인할 방법이 이것뿐이다.
+ * 스크린샷은 사람이 봐야 하고, 사람이 보지 않으면 조용히 사라져 있어도 모른다.
+ */
+export function markHelp(open: boolean): void {
+  document.body.dataset['help'] = open ? 'open' : 'closed';
+}
+
 /** 대화 상태. 닫혀 있으면 `closed`, 열려 있으면 `2/5` 처럼 현재 쪽을 알린다. */
 export function markDialogue(session: DialogueSession | undefined): void {
   document.body.dataset['dialogue'] =

@@ -33,6 +33,8 @@ import {
 import { expForEnemy } from '../../core/progress/level.js';
 import { COIN_REWARD, EXP_REWARD } from '../../data/progression.js';
 import { Gauge } from '../ui/Gauge.js';
+import { BATTLE_KEYS } from '../../data/keys.js';
+import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /** 이벤트 하나를 보여주는 시간. 너무 빠르면 무슨 일이 있었는지 읽을 수 없다. */
@@ -78,7 +80,7 @@ export class BattleScene extends Phaser.Scene {
   private messageText!: Phaser.GameObjects.Text;
   private cursor!: Phaser.GameObjects.Text;
 
-  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private keys: BoundKeys = {};
 
   constructor() {
     super('battle');
@@ -476,26 +478,18 @@ export class BattleScene extends Phaser.Scene {
       this.keys = {};
       return;
     }
-    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
-    this.keys = {
-      up: key('UP'),
-      down: key('DOWN'),
-      confirm: key('ENTER'),
-      confirm2: key('SPACE'),
-      cancel: key('ESC'),
-    };
+    this.keys = bindSceneKeys(keyboard, BATTLE_KEYS);
   }
 
   private pressed(name: string): boolean {
-    const key = this.keys[name];
-    return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
+    return (this.keys[name] ?? []).some((key) => Phaser.Input.Keyboard.JustDown(key));
   }
 
   override update(): void {
     if (this.phase === 'playing') return;
 
     if (this.phase === 'over') {
-      if (this.pressed('confirm') || this.pressed('confirm2')) this.leaveBattle();
+      if (this.pressed('confirm')) this.leaveBattle();
       return;
     }
 
@@ -515,7 +509,7 @@ export class BattleScene extends Phaser.Scene {
       this.renderMenu();
     }
     if (this.pressed('cancel') && this.phase !== 'command') this.backToCommand();
-    if (this.pressed('confirm') || this.pressed('confirm2')) this.confirm();
+    if (this.pressed('confirm')) this.confirm();
   }
 
   private backToCommand(): void {

@@ -3,6 +3,7 @@ import { dialogueScript } from '../../data/dialogue.js';
 import { npcsForMap, type Npc } from '../../data/npcs.js';
 import { portalsForMap } from '../../data/portals.js';
 import { zonesForMap } from '../../data/zones.js';
+import { OVERWORLD_KEYS, type KeyBinding } from '../../data/keys.js';
 import { CHARACTER_SHEET, PLAYER_PORTRAIT } from '../../data/characters.js';
 import { MAP_NAMES, STARTING_MAP, type MapId } from '../../data/maps.js';
 import type { TileMap } from '../../core/world/tilemap.js';
@@ -60,9 +61,11 @@ import { loadMap } from '../world/mapRegistry.js';
 import { renderTilemapLayer } from '../world/renderTilemap.js';
 import { TextBox } from '../ui/TextBox.js';
 import { LocationBanner } from '../ui/LocationBanner.js';
+import { KeyGuide } from '../ui/KeyGuide.js';
 import {
   markCamera,
   markDialogue,
+  markHelp,
   markLevel,
   markMap,
   markScene,
@@ -109,6 +112,8 @@ export class OverworldScene extends Phaser.Scene {
   private interactKeys: Phaser.Input.Keyboard.Key[] = [];
   private relicKeys: Phaser.Input.Keyboard.Key[] = [];
   private saveKeys: Phaser.Input.Keyboard.Key[] = [];
+  private helpKeys: Phaser.Input.Keyboard.Key[] = [];
+  private keyGuide!: KeyGuide;
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
   private stepping = false;
@@ -161,12 +166,14 @@ export class OverworldScene extends Phaser.Scene {
     world.add(this.playerView);
 
     this.banner = new LocationBanner(this);
+    this.keyGuide = new KeyGuide(this);
     this.textBox = new TextBox(this);
     this.bindKeys();
 
     this.playerView.setPosition(this.pixelX(this.walker), this.pixelY(this.walker));
     markWalker(this.walker);
     markDialogue(undefined);
+    markHelp(false);
     markSites(this.remainingSites().length);
     this.updateLocation();
     this.updateFacingPip();
@@ -185,6 +192,15 @@ export class OverworldScene extends Phaser.Scene {
     this.followCamera();
 
     if (this.leaving) return;
+
+    // 도움말은 대화 중에도 열린다 — 대화창 조작을 모를 때 볼 수 있어야 한다.
+    if (this.helpJustPressed()) {
+      markHelp(this.keyGuide.toggle());
+      return;
+    }
+
+    // 도움말이 떠 있는 동안에는 걷지 않는다. 안내를 읽으면서 조우에 걸리면 곤란하다.
+    if (this.keyGuide.isOpen) return;
 
     // 대화 중에는 걷지 않는다. 말하면서 걸어가면 대화 상대가 화면 밖으로 나간다.
     if (this.dialogue !== undefined) {
@@ -515,19 +531,25 @@ export class OverworldScene extends Phaser.Scene {
       this.moveKeys = { up: [], down: [], left: [], right: [] };
       this.relicKeys = [];
       this.saveKeys = [];
+      this.helpKeys = [];
       return;
     }
 
-    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
+    // **배치는 `data/keys.ts` 가 정한다.** 여기 코드를 직접 적으면 도움말과 어긋난다 —
+    // `S` 가 아래로 걷기이면서 저장이던 시절이 그렇게 만들어졌다.
+    const bind = (binding: KeyBinding): Phaser.Input.Keyboard.Key[] =>
+      binding.keys.map((code) => keyboard.addKey(code, true, true));
+
     this.moveKeys = {
-      up: [key('UP'), key('W')],
-      down: [key('DOWN'), key('S')],
-      left: [key('LEFT'), key('A')],
-      right: [key('RIGHT'), key('D')],
+      up: bind(OVERWORLD_KEYS.up),
+      down: bind(OVERWORLD_KEYS.down),
+      left: bind(OVERWORLD_KEYS.left),
+      right: bind(OVERWORLD_KEYS.right),
     };
-    this.interactKeys = [key('SPACE'), key('ENTER')];
-    this.relicKeys = [key('R')];
-    this.saveKeys = [key('S')];
+    this.interactKeys = bind(OVERWORLD_KEYS.interact);
+    this.relicKeys = bind(OVERWORLD_KEYS.relic);
+    this.saveKeys = bind(OVERWORLD_KEYS.save);
+    this.helpKeys = bind(OVERWORLD_KEYS.help);
   }
 
   /**
@@ -544,6 +566,10 @@ export class OverworldScene extends Phaser.Scene {
 
   private saveJustPressed(): boolean {
     return this.saveKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
+  }
+
+  private helpJustPressed(): boolean {
+    return this.helpKeys.some((key) => Phaser.Input.Keyboard.JustDown(key));
   }
 
   /** 세이브 화면. 지금 선 자리를 저장 위치로 넘긴다 (T-038). */
