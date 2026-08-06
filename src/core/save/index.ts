@@ -35,7 +35,7 @@ import {
  * `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다 — 조용히 통과시키면
  * 필드가 `undefined` 인 채로 게임이 돌아가다 한참 뒤에 이상해진다.
  */
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface SavedAilment {
   readonly kind: Ailment;
@@ -97,6 +97,13 @@ export interface SaveData {
    * 비어 있으면 처음 인원으로 본다 — 옛 세이브에는 이 개념이 없었다.
    */
   readonly joined: readonly string[];
+  /**
+   * 지닌 열쇠 (v6, T-052).
+   *
+   * 잠긴 문을 지날 자격이다. **소모되지 않으므로 목록 하나로 충분하다** —
+   * 개수를 세면 "열쇠를 두 개 가진 상태" 라는 답할 필요 없는 질문이 생긴다.
+   */
+  readonly keys: readonly string[];
 }
 
 // ── 마이그레이션 ──────────────────────────────────────────────────────────
@@ -152,6 +159,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     ...data,
     joined: isRecord(data['party']) ? Object.keys(data['party']) : [],
   }),
+
+  /**
+   * v5 → v6 · 열쇠 (T-052).
+   *
+   * 그전에는 잠긴 문이 없었으므로 열쇠를 가진 사람도 없다. 빈 목록이 정확한 답이다 —
+   * 열쇠가 있는 유일한 자리(3층)는 이 버전과 함께 생겼고, 거기 가려면 어차피
+   * 주워야 한다.
+   */
+  5: (data) => ({ ...data, keys: [] }),
 };
 
 /**
@@ -337,6 +353,15 @@ export function parseSave(
     });
   }
 
+  const keys: string[] = [];
+  const keysRaw = readArray(data['keys'], 'keys', problems);
+  if (keysRaw !== undefined) {
+    keysRaw.forEach((entry, position) => {
+      const id = readText(entry, `keys[${position}]`, problems);
+      if (id !== undefined) keys.push(id);
+    });
+  }
+
   const collectedSites: string[] = [];
   const collectedRaw = readArray(data['collectedSites'], 'collectedSites', problems);
   if (collectedRaw !== undefined) {
@@ -372,6 +397,7 @@ export function parseSave(
     exp: exp as number,
     coins: coins as number,
     joined,
+    keys,
   };
 }
 

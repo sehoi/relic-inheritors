@@ -4,6 +4,7 @@ import type { Skill } from '../core/battle/skill.js';
 import type { AilmentState } from '../core/battle/status.js';
 import { createRng, restoreRng, type Rng } from '../core/rng/index.js';
 import { cleansedErosion, type CleansingTuning } from '../core/world/facility.js';
+import type { SiteReward } from '../core/world/site.js';
 import { buy, buyBlockReason, type StockEntry } from '../core/world/shop.js';
 import {
   SAVE_VERSION,
@@ -241,11 +242,26 @@ export function collected(): ReadonlySet<string> {
  * 주웠다는 사실과 유물을 얻는 것을 **한 곳에서** 처리한다. 나눠 두면 언젠가 한쪽만 부르게 되고,
  * 그러면 유물 없이 사라진 회수 지점이나 무한히 주울 수 있는 유물이 생긴다.
  */
-export function collectSite(siteId: string, relicId: string): string | undefined {
-  if (collectedSites.has(siteId)) return undefined;
+export function collectSite(siteId: string, reward: SiteReward): boolean {
+  if (collectedSites.has(siteId)) return false;
   collectedSites = new Set([...collectedSites, siteId]);
-  gainRelic(relicId);
-  return relicId;
+
+  if (reward.kind === 'relic') gainRelic(reward.relicId);
+  else keys = new Set([...keys, reward.keyId]);
+
+  return true;
+}
+
+/**
+ * 지닌 열쇠 (T-052).
+ *
+ * **소모하지 않는다.** 문을 열 때 쓰이면 두 번째 방문에 다시 막히는데,
+ * 이미 연 문이 다시 잠기는 것은 진행이 아니라 사고로 읽힌다.
+ */
+let keys: ReadonlySet<string> = new Set();
+
+export function heldKeys(): ReadonlySet<string> {
+  return keys;
 }
 
 /**
@@ -479,6 +495,7 @@ export function resetParty(): void {
   attunement = {};
   owned = STARTING_RELICS;
   collectedSites = new Set();
+  keys = new Set();
   partyExp = 0;
   coins = 0;
   joined = new Set(STARTING_MEMBERS);
@@ -557,6 +574,7 @@ export function captureSave(
     exp: partyExp,
     coins,
     joined: [...joined].sort(),
+    keys: [...keys].sort(),
   };
 }
 
@@ -578,6 +596,7 @@ export function restoreSave(save: SaveData): void {
   coins = save.coins;
   // 인원을 먼저 넣는다 — 아래에서 vitals 를 채울 때 누가 있는지가 정해져 있어야 한다.
   joined = new Set(save.joined.length === 0 ? STARTING_MEMBERS : save.joined);
+  keys = new Set(save.keys);
 
   const next: Record<ActorId, Vitals> = {};
   for (const [actorId, saved] of Object.entries(save.party)) {

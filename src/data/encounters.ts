@@ -242,6 +242,19 @@ export const ENCOUNTER_TABLES: Readonly<Partial<Record<MapId, readonly Encounter
     { weight: 3, mobCount: 3 },
     { weight: 1, mobCount: 1 },
   ],
+
+  /**
+   * 지하 2층 (T-052).
+   *
+   * 마릿수는 1층과 같게 두고 **적 레벨로만 올린다.** 마릿수는 난이도 손잡이가 아니라
+   * 벽 스위치라는 것을 T-049b 에서 실측했다 — 한 마리 늘리면 소모로 지는 게 아니라
+   * 한 판에 몰살당한다.
+   */
+  'ruin-sanctum': [
+    { weight: 6, mobCount: 2 },
+    { weight: 3, mobCount: 3 },
+    { weight: 1, mobCount: 1 },
+  ],
 };
 
 /**
@@ -284,6 +297,9 @@ export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 14, maxSteps: 32 };
 export const AREA_LEVELS: Readonly<Partial<Record<MapId, number>>> = {
   'ruin-entrance': 3,
   'ruin-depths': 7,
+  // 지하 2층. 한 층 내려올 때마다 벌어지는 간격(3 → 7)보다 좁게 잡는다 —
+  // 1층에서 2층은 층 하나지만 입구에서 1층은 "유적 밖에서 안" 이라 성격이 다르다.
+  'ruin-sanctum': 10,
 };
 
 /**
@@ -301,6 +317,9 @@ export const AREA_LEVELS: Readonly<Partial<Record<MapId, number>>> = {
 export const AREA_MOBS: Readonly<Partial<Record<MapId, readonly MobKind[]>>> = {
   'ruin-entrance': ['remnant', 'warden', 'wisp'],
   'ruin-depths': ['creeper', 'husk', 'maw', 'remnant'],
+  // 2층은 종류를 새로 들이지 않는다. 여섯이 전부 어딘가에 나오고 있으므로 여기서
+  // 더 늘리면 **레벨과 종류가 같이 뛰어** 무엇이 어려워졌는지 알 수 없게 된다.
+  'ruin-sanctum': ['creeper', 'husk', 'maw', 'wisp'],
 };
 
 /** 그 지역에서 한 번 조우를 뽑는다. */

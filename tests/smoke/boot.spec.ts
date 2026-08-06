@@ -800,6 +800,79 @@ test('Esc 메뉴로 인물 화면까지 가고 제자리로 돌아온다', async
 });
 
 /**
+ * 잠긴 문 (T-052).
+ *
+ * **막는 것이 목적이 아니라 순서를 만드는 것이 목적이다.** 열쇠를 찾기 전에는 못
+ * 지나가므로 층을 한 바퀴 돌아야 안쪽에 닿는다. 그 순서가 실제로 강제되는지는
+ * 화면에서만 확인된다 — 데이터만 보면 문도 있고 열쇠도 있다.
+ */
+test('잠긴 문은 열쇠를 줍기 전에는 막고, 주우면 열린다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  // 열쇠 자리 바로 옆에서 시작한다 (`?at=`). 두 층을 가로지르는 여정은 다른 테스트의 몫이고,
+  // 여기서 볼 것은 **열쇠 전후로 문이 다르게 구는가**다.
+  await page.goto('/?encounters=off&party=full&at=ruin-sanctum:9,24');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-sanctum');
+
+  const walk = async (key: string, times: number): Promise<void> => {
+    for (let i = 0; i < times; i += 1) await stepKey(page, key);
+  };
+
+  /** 대화는 쪽 수가 제각각이다 — 닫힐 때까지 넘긴다. */
+  const closeDialogue = async (): Promise<void> => {
+    for (let i = 0; i < 6; i += 1) {
+      if ((await page.locator('body').getAttribute('data-dialogue')) === 'closed') return;
+      await stepKey(page, 'Space');
+    }
+  };
+
+  // 문 앞까지 먼저 가서 **열쇠 없이 막히는지** 본다. 수로 → 통로 → 전실.
+  await walk('ArrowRight', 13);
+  await walk('ArrowUp', 13);
+  await walk('ArrowRight', 9);
+
+  await expect(page.locator('body'), '열쇠 없이 문을 지났다').toHaveAttribute(
+    'data-map',
+    'ruin-sanctum',
+  );
+  await expect(page.locator('body'), '막혔는데 아무 말이 없다').not.toHaveAttribute(
+    'data-dialogue',
+    'closed',
+  );
+  await page.screenshot({ path: `${SHOT_DIR}/locked-door.png` });
+  await closeDialogue();
+
+  // 열쇠를 주우러 되돌아간다.
+  await walk('ArrowLeft', 9);
+  await walk('ArrowDown', 13);
+  await walk('ArrowLeft', 13);
+  await expect(page.locator('body')).toHaveAttribute('data-player', '8,24');
+  await closeDialogue();
+
+  // 이제 열린다.
+  await walk('ArrowRight', 13);
+  await walk('ArrowUp', 13);
+  await walk('ArrowRight', 9);
+  await expect(page.locator('body'), '열쇠를 주웠는데도 막힌다').toHaveAttribute(
+    'data-zone',
+    'sanctum-inner',
+    { timeout: 10_000 },
+  );
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 잡몹 여섯 종이 한 화면에 선다 (T-050).
  *
  * **타일 번호는 눈으로 봐야 안다.** 시트에서 번호만 보고 고르면 "떠도는 불씨" 자리에
