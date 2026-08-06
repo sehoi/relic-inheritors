@@ -800,6 +800,33 @@ test('Esc 메뉴로 인물 화면까지 가고 제자리로 돌아온다', async
 });
 
 /**
+ * 잡몹 여섯 종이 한 화면에 선다 (T-050).
+ *
+ * **타일 번호는 눈으로 봐야 안다.** 시트에서 번호만 보고 고르면 "떠도는 불씨" 자리에
+ * 사람 얼굴이 서 있어도 테스트는 전부 초록이다 — 실제로 그랬다.
+ * 스크린샷이 이 검사의 절반이고, 나머지 절반이 아래의 개수 확인이다.
+ */
+test('잡몹 여섯 종이 한 화면에 선다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?scene=battle&mobs=all&party=full');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 20_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-battle-phase', 'command', {
+    timeout: 10_000,
+  });
+
+  await page.screenshot({ path: `${SHOT_DIR}/mobs.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 전투 한 판을 끝까지 진행한다 (T-020).
  *
  * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —

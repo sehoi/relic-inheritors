@@ -48,19 +48,104 @@ export function starterParty(
   });
 }
 
+/**
+ * 잡몹 (GDD §8 — 6종, T-050).
+ *
+ * **세 축을 함께 움직인다.** 속성 약점만 다르면 적이 여섯이어도 싸움은 하나다.
+ *
+ * 1. **속성** — 무엇으로 때려야 잘 드는가. 조합을 바꿀 이유가 된다
+ * 2. **스탯 배율** — 단단한가 빠른가. 같은 레벨이어도 체감이 다르다
+ * 3. **AI** — 무엇을 하는 놈인가 (`data/ai.ts`). 이게 없으면 앞의 둘은 숫자놀음이다
+ *
+ * 배율의 합은 대체로 1 근처로 맞춘다 — 한 축을 올리면 다른 축을 내린다.
+ * 그러지 않으면 "그냥 센 놈" 이 되어 난이도가 종류 수만큼 곱해진다.
+ */
 const MOB_TEMPLATES = {
-  remnant: { name: '각인 잔재', tile: 108, affinity: { thunder: 1.5, earth: 0.5 } },
-  warden: { name: '무너진 파수꾼', tile: 122, affinity: { fire: 1.4 } },
+  /** 기준이 되는 놈. 다른 다섯을 여기에 견줘 읽는다. */
+  remnant: {
+    name: '각인 잔재',
+    tile: 108,
+    affinity: { thunder: 1.5, earth: 0.5 },
+    ai: 'brute',
+    statScale: {},
+  },
+
+  warden: {
+    name: '무너진 파수꾼',
+    tile: 122,
+    affinity: { fire: 1.4 },
+    ai: 'brute',
+    statScale: { maxHp: 1.15, agi: 0.9 },
+  },
+
+  /** 독을 묻힌다. 얇은 대신 오래 끌면 손해가 쌓인다. */
+  creeper: {
+    name: '스며든 것',
+    tile: 109,
+    affinity: { fire: 1.5, water: 0.6 },
+    ai: 'tainter',
+    statScale: { maxHp: 0.9, mag: 1.2, def: 0.9 },
+  },
+
+  /** 벽. 혼자면 지루하고 둘이면 시간이 없다 — 표에서 비중을 낮게 준다. */
+  husk: {
+    name: '마른 껍데기',
+    tile: 110,
+    affinity: { water: 1.5, thunder: 0.7 },
+    ai: 'bulwark',
+    statScale: { maxHp: 1.4, def: 1.35, atk: 0.85, agi: 0.7 },
+  },
+
+  /**
+   * 빠르고 약한 쪽만 노린다. 얇아서 먼저 잡을 수 있고, 두면 한 사람이 무너진다.
+   *
+   * **화력은 낮게 잡는다.** 이 놈의 위협은 "빨리 잡아야 한다" 이지 "많이 아프다" 가
+   * 아니다. 처음 잡은 `atk 1.1` 로는 시작 지역 전멸률이 0% → 5% 로 올랐는데,
+   * 파티가 둘뿐인 구간에서 한 사람에게 피해가 몰리면 그대로 무너지기 때문이다.
+   * 집중 공격이라는 성격은 그대로 두고 한 대의 무게만 덜었다.
+   */
+  wisp: {
+    name: '떠도는 불씨',
+    // 111 은 사람 얼굴이었다. 시트에서 번호만 보고 고르면 이런 일이 나고,
+    // 화면을 보기 전에는 테스트가 전부 초록이다 (`?mobs=all`).
+    tile: 124,
+    affinity: { earth: 1.5, fire: 0.5 },
+    ai: 'stalker',
+    statScale: { maxHp: 0.65, agi: 1.5, atk: 0.9, def: 0.8 },
+  },
+
+  /** 막지 않고 세게 친다. 침묵을 걸어오므로 유물 게임을 직접 막는다. */
+  maw: {
+    name: '삼키는 입',
+    tile: 123,
+    affinity: { earth: 1.4, thunder: 0.7 },
+    ai: 'ravager',
+    statScale: { maxHp: 1.1, atk: 1.3, def: 0.85, res: 0.9 },
+  },
 } as const;
 
 export type MobKind = keyof typeof MOB_TEMPLATES;
 
+export const MOB_KINDS = Object.keys(MOB_TEMPLATES) as readonly MobKind[];
+
 export function ruinMob(kind: MobKind, index: number, level: number): BattleActor {
   const template = MOB_TEMPLATES[kind];
-  return makeCombatant(`${kind}-${index}`, 'enemy', statsAtLevel(MOB_CURVES, level), {
+  const base = statsAtLevel(MOB_CURVES, level);
+  const stats = { ...base };
+  for (const [key, scale] of Object.entries(template.statScale) as [keyof Stats, number][]) {
+    stats[key] = Math.round(base[key] * scale);
+  }
+
+  return makeCombatant(`${kind}-${index}`, 'enemy', stats, {
     name: template.name,
     affinity: template.affinity,
   });
+}
+
+/** 그 잡몹이 쓰는 AI. 종류마다 무엇을 하는 놈인지가 다르다 (`data/ai.ts`). */
+export function mobProfile(actorId: ActorId): AiProfile {
+  const kind = actorId.split('-')[0] as MobKind;
+  return aiProfile(MOB_TEMPLATES[kind]?.ai ?? 'brute');
 }
 
 /** 적 스프라이트의 타일 번호. 화면 표현이라 데이터에 함께 둔다. */
@@ -71,6 +156,8 @@ export function mobTile(actorId: ActorId): number {
 
 export interface EncounterOptions {
   readonly mobCount?: number;
+  /** 나올 잡몹의 종류. 지역이 정한다 (`AREA_MOBS`). 생략하면 기본 둘을 번갈아 쓴다. */
+  readonly kinds?: readonly MobKind[];
   /** 이미 유물 보정이 적용된 파티. 만드는 쪽은 `game/partyStore` 다. */
   readonly party?: readonly BattleActor[];
   /** 파티원이 쓸 수 있는 스킬. **장착 유물에서 나온다** (ADR-004). */
@@ -89,15 +176,17 @@ export function ruinEncounter(level: number, options: EncounterOptions = {}): En
     'ashen-ember': 1,
   };
 
-  const mobs = Array.from({ length: mobCount }, (_, i) =>
-    ruinMob(i % 2 === 0 ? 'remnant' : 'warden', i + 1, level),
+  const kinds = options.kinds ?? Array.from({ length: mobCount }, (_, i) =>
+    i % 2 === 0 ? ('remnant' as const) : ('warden' as const),
   );
+  const mobs = kinds.slice(0, mobCount).map((kind, i) => ruinMob(kind, i + 1, level));
 
   const actors = [...party, ...mobs];
   const profiles: Record<ActorId, AiProfile> = {};
   for (const actor of actors) {
     // 파티는 사람이 조작하지만, 프로필을 채워두면 시뮬레이터와 자동 진행이 같은 편성을 쓴다.
-    profiles[actor.id] = actor.side === 'party' ? aiProfile('striker') : aiProfile('brute');
+    // **적은 종류마다 다른 AI 를 쓴다** — 속성만 다르고 행동이 같으면 여섯이어도 싸움은 하나다.
+    profiles[actor.id] = actor.side === 'party' ? aiProfile('striker') : mobProfile(actor.id);
   }
 
   return {
@@ -197,6 +286,23 @@ export const AREA_LEVELS: Readonly<Partial<Record<MapId, number>>> = {
   'ruin-depths': 7,
 };
 
+/**
+ * 지역별로 나오는 잡몹 (T-050).
+ *
+ * **층이 깊어지면 종류가 바뀐다.** 같은 여섯이 어디서나 나오면 내려간 보람이 없고,
+ * 아래층 적이 위층에도 나오면 위층의 난이도가 아래층에 끌려간다.
+ *
+ * 가중치를 두지 않고 목록으로만 둔다 — 마릿수는 `ENCOUNTER_TABLES` 가 정하고
+ * 여기는 **무엇이 나오는가**만 답한다. 한 조우 안에서 종류가 섞이는 것이 자연스럽다.
+ *
+ * `husk`(벽)를 입구에 두지 않는다. 전투가 길어지는 것은 난이도가 아니라 지루함이고,
+ * 처음 조작을 배우는 곳에서 그건 특히 나쁘다.
+ */
+export const AREA_MOBS: Readonly<Partial<Record<MapId, readonly MobKind[]>>> = {
+  'ruin-entrance': ['remnant', 'warden', 'wisp'],
+  'ruin-depths': ['creeper', 'husk', 'maw', 'remnant'],
+};
+
 /** 그 지역에서 한 번 조우를 뽑는다. */
 export function rollEncounter(
   mapId: MapId,
@@ -205,7 +311,8 @@ export function rollEncounter(
 ): Encounter {
   const table = ENCOUNTER_TABLES[mapId];
   const level = AREA_LEVELS[mapId];
-  if (table === undefined || level === undefined) {
+  const pool = AREA_MOBS[mapId];
+  if (table === undefined || level === undefined || pool === undefined) {
     // 안전지대 판정(`core/world/zone.ts`)이 먼저 걸러야 하는 상황이다. 여기까지 왔다면 배선이 틀렸다.
     throw new RangeError(`"${mapId}" 에는 인카운터가 없습니다. 안전지대 판정을 지나쳤습니다.`);
   }
@@ -215,5 +322,14 @@ export function rollEncounter(
     rng,
   );
 
-  return ruinEncounter(level, { ...options, mobCount: entry.mobCount });
+  // 종류를 한 마리씩 따로 뽑는다. 조우마다 한 종류로 채우면 "이번엔 벽만 셋" 같은
+  // 극단이 나오는데, 그건 다양성이 아니라 운이다.
+  const kinds = Array.from({ length: entry.mobCount }, () =>
+    pickWeighted(
+      pool.map((kind) => ({ weight: 1, value: kind })),
+      rng,
+    ),
+  );
+
+  return ruinEncounter(level, { ...options, mobCount: entry.mobCount, kinds });
 }
