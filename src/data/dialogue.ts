@@ -48,6 +48,43 @@ export const DIALOGUE_SCRIPTS: Readonly<Record<string, DialogueScript>> = {
       },
     ],
   },
+
+  // ── 합류 (T-049b) ─────────────────────────────────────────────────────
+  // 둘 다 **유적 안에서** 만난다. 거점에서 그냥 받으면 "찾아냈다" 가 아니라
+  // "지급받았다" 가 된다.
+
+  'join-warden': {
+    id: 'join-warden',
+    lines: [
+      {
+        speaker: '파수',
+        text: '문을 지키던 사람이야. 문은 이미 열렸고, 지킬 것이 없어졌지.',
+      },
+      { speaker: '파수', text: '두고 온 것을 찾으러 간다면, 나도 데려가 줘.' },
+      { text: '파수가 일행에 합류했다.' },
+    ],
+  },
+
+  'join-warden-after': {
+    id: 'join-warden-after',
+    lines: [{ speaker: '파수', text: '앞은 내가 맡지. 그쪽은 뒤를 봐.' }],
+  },
+
+  'join-seeker': {
+    id: 'join-seeker',
+    lines: [
+      {
+        speaker: '탐구자',
+        text: '여기까지 내려온 사람은 오랜만이네. 길을 아는 사람이 필요하지 않아?',
+      },
+      { text: '탐구자가 일행에 합류했다.' },
+    ],
+  },
+
+  'join-seeker-after': {
+    id: 'join-seeker-after',
+    lines: [{ speaker: '탐구자', text: '아래로 더 내려가는 길이 있어. 아직은 못 열지만.' }],
+  },
 };
 
 /** 키와 id 가 어긋나거나 중복되면 모듈을 불러오는 순간 터진다 — 늦게 아는 것보다 낫다. */

@@ -1,6 +1,6 @@
 import type { AiProfile } from '../core/battle/ai.js';
 import type { ActorId, BattleActor, Stats } from '../core/battle/index.js';
-import { ROSTER } from './party.js';
+import { ROSTER, type PartyMemberTemplate } from './party.js';
 import type { Inventory } from '../core/battle/item.js';
 import type { Skill } from '../core/battle/skill.js';
 import { pickWeighted, type EncounterTuning } from '../core/world/encounter.js';
@@ -33,10 +33,13 @@ export interface Encounter {
  * 파티를 만든다. **인원과 역할은 `data/party.ts` 가 정한다** — 여기 적어두면
  * 시뮬레이터와 게임이 서로 다른 편성을 쓰게 된다 (실제로 그랬다).
  */
-export function starterParty(level: number): BattleActor[] {
+export function starterParty(
+  level: number,
+  members: readonly PartyMemberTemplate[] = ROSTER,
+): BattleActor[] {
   const base = statsAtLevel(PARTY_CURVES, level);
 
-  return ROSTER.map((member) => {
+  return members.map((member) => {
     const stats = { ...base };
     for (const [key, scale] of Object.entries(member.statScale ?? {}) as [keyof Stats, number][]) {
       stats[key] = Math.round(base[key] * scale);
@@ -134,10 +137,16 @@ export const ENCOUNTER_TABLES: Readonly<Partial<Record<MapId, readonly Encounter
   /**
    * **적 수가 레벨보다 훨씬 세게 먹힌다.**
    *
-   * 실측(파티 Lv6, 적 Lv5): 2마리면 전멸 1%, 3마리면 100%. 한 마리 차이가 레벨 두어 개보다
-   * 크다 — 파티가 2인뿐이라 행동 수 비율이 그대로 화력 차이가 되기 때문이다.
+   * 실측(파티 2인 Lv6, 적 Lv5): 2마리면 전멸 1%, 3마리면 100%. 한 마리 차이가 레벨 두어 개보다
+   * 크다 — 행동 수 비율이 그대로 화력 차이가 되기 때문이다.
    *
-   * 예전 표는 3~4마리가 중심이었다. 2마리를 중심에 두고 3마리를 가끔 섞는다.
+   * **그래서 이 표는 파티 인원에 매여 있고, 인원은 이제 고정이 아니다** (T-049b —
+   * 2인으로 시작해 4인이 된다). 파수가 합류해 지하를 3인으로 돌게 되자 예전 난이도가
+   * 통째로 사라져서 다시 잡았다.
+   *
+   * **적 수가 아니라 적 레벨로 올렸다** (`AREA_LEVELS` 참조). 마릿수를 3~4로 올리면
+   * 소모로 지는 게 아니라 **한 판에 몰살당한다** — 실측에서 3마리 중심은 맨몸 25% /
+   * 쉬며 28% 로 거점이 아무 값도 하지 못했다. 마릿수는 단차를 만드는 대신 벽을 만든다.
    */
   'ruin-depths': [
     { weight: 6, mobCount: 2 },
@@ -160,12 +169,31 @@ export const ENCOUNTER_STEPS: EncounterTuning = { minSteps: 14, maxSteps: 32 };
 /**
  * 지역의 **적** 레벨. 파티 레벨과 무관하다 — 파티는 경험치로 자란다 (`core/progress/level.ts`).
  *
- * **6·9 에서 내렸다.** 파티가 레벨 1에서 시작하게 되면서 기준점이 달라졌다.
+ * **입구는 6 에서 3 으로 내렸다.** 파티가 레벨 1에서 시작하게 되면서 기준점이 달라졌다.
  * 입구는 처음 유물을 만지는 곳이므로 조합을 실험할 여유가 있어야 한다.
+ *
+ * **지하는 5 에서 8 로 올렸다** (T-049b). 파수가 합류해 지하를 3인으로 돌게 되자
+ * 5 는 전멸률 0% 가 되어 층 사이의 단차가 사라졌다.
+ *
+ * 실측(3인, 15판 연속, 전멸률 — 맨몸 Lv6 / 5판마다 쉬며 Lv6 / 성장 Lv10):
+ *
+ * ```
+ *   표    적Lv    맨몸    쉬며    성장
+ * 2중심      7      3%      0%      0%
+ * 2중심      8     18%     13%      0%   ← 여기
+ * 3중심      7     25%     28%      0%
+ * 4중심      6     25%     25%      0%
+ * ```
+ *
+ * ⚠️ **Lv6 → Lv8 에서 전멸률이 오히려 오르는 구간이 있다.** 레벨업이 완전 회복을
+ * 겸하는데(T-044) 경험치 곡선이 지수 1.8 이라 높은 레벨일수록 레벨업이 드물다 —
+ * 스탯이 좋아지는 것보다 회복 횟수가 줄어드는 쪽이 크다. Lv10 부터 뒤집힌다.
+ * **성장이 소모전에서 손해가 되는 구간이 존재한다**는 뜻이고, 그게 아래 `- [!]` 로
+ * 백로그에 남긴 문제의 뿌리다.
  */
 export const AREA_LEVELS: Readonly<Partial<Record<MapId, number>>> = {
   'ruin-entrance': 3,
-  'ruin-depths': 5,
+  'ruin-depths': 8,
 };
 
 /** 그 지역에서 한 번 조우를 뽑는다. */

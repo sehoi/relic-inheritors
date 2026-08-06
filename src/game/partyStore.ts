@@ -12,6 +12,7 @@ import {
   type SavedVitals,
 } from '../core/save/index.js';
 import {
+  SLOTS_PER_MEMBER,
   activesOf,
   allEquipped,
   applyStatMods,
@@ -29,6 +30,7 @@ import {
 } from '../core/relic/resonance.js';
 import { ALL_RESONANCES } from '../data/resonances.js';
 import { starterParty } from '../data/encounters.js';
+import { ROSTER, STARTING_MEMBERS } from '../data/party.js';
 import { LEVEL_CURVE } from '../data/progression.js';
 import { levelOf, progressOf, type LevelProgress } from '../core/progress/level.js';
 import {
@@ -177,9 +179,31 @@ export function gainExp(amount: number): number | undefined {
   return after;
 }
 
+/** 지금 함께인 구성원. 처음 둘로 시작해 유적에서 넷이 된다 (GDD §8). */
+let joined: ReadonlySet<ActorId> = new Set(STARTING_MEMBERS);
+
+export function joinedMembers(): ReadonlySet<ActorId> {
+  return joined;
+}
+
+/**
+ * 구성원이 합류한다. 이미 함께면 `false`.
+ *
+ * **로드아웃을 다시 만들지 않는다.** 새 구성원의 슬롯은 `getLoadout` 이 채워 넣는다 —
+ * 여기서 새로 만들면 그동안 짜둔 조합이 날아간다.
+ */
+export function joinMember(actorId: ActorId): boolean {
+  if (joined.has(actorId)) return false;
+  joined = new Set([...joined, actorId]);
+  return true;
+}
+
 /** 보정이 붙지 않은 파티. 스탯 계산의 기준점이다. */
 function basePartyMembers(): readonly BattleActor[] {
-  return starterParty(partyLevel());
+  return starterParty(
+    partyLevel(),
+    ROSTER.filter((member) => joined.has(member.id)),
+  );
 }
 
 export function ownedRelics(): readonly string[] {
@@ -238,8 +262,24 @@ function defaultLoadout(): Loadout {
   return next;
 }
 
+/**
+ * 지금 로드아웃. **새로 합류한 구성원에게는 빈 슬롯을 붙여준다.**
+ *
+ * 합류할 때 로드아웃을 새로 만들지 않는 이유는 그때까지 짜둔 조합이 날아가기 때문이다.
+ * 늘어난 자리만 채운다.
+ */
 export function getLoadout(): Loadout {
   loadout ??= defaultLoadout();
+
+  const missing = basePartyMembers().filter((member) => loadout?.[member.id] === undefined);
+  if (missing.length > 0) {
+    const next: Record<ActorId, readonly (string | null)[]> = { ...loadout };
+    for (const member of missing) {
+      next[member.id] = Array.from({ length: SLOTS_PER_MEMBER }, () => null);
+    }
+    loadout = next;
+  }
+
   return loadout;
 }
 
@@ -425,6 +465,7 @@ export function resetParty(): void {
   collectedSites = new Set();
   partyExp = 0;
   coins = 0;
+  joined = new Set(STARTING_MEMBERS);
 }
 
 /**
@@ -499,6 +540,7 @@ export function captureSave(
     collectedSites: [...collectedSites].sort(),
     exp: partyExp,
     coins,
+    joined: [...joined].sort(),
   };
 }
 
@@ -518,6 +560,8 @@ export function restoreSave(save: SaveData): void {
   // 경험치를 먼저 넣는다 — 아래에서 vitals 를 채울 때 최대치가 레벨에 달려 있다.
   partyExp = save.exp;
   coins = save.coins;
+  // 인원을 먼저 넣는다 — 아래에서 vitals 를 채울 때 누가 있는지가 정해져 있어야 한다.
+  joined = new Set(save.joined.length === 0 ? STARTING_MEMBERS : save.joined);
 
   const next: Record<ActorId, Vitals> = {};
   for (const [actorId, saved] of Object.entries(save.party)) {

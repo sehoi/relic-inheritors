@@ -35,7 +35,7 @@ import {
  * `migrateSave` 가 어느 구간이 비었는지 이름을 대며 거부한다 — 조용히 통과시키면
  * 필드가 `undefined` 인 채로 게임이 돌아가다 한참 뒤에 이상해진다.
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SavedAilment {
   readonly kind: Ailment;
@@ -91,6 +91,12 @@ export interface SaveData {
   readonly exp: number;
   /** 은편 (v4, T-041a). */
   readonly coins: number;
+  /**
+   * 함께인 구성원 (v5, T-049b).
+   *
+   * 비어 있으면 처음 인원으로 본다 — 옛 세이브에는 이 개념이 없었다.
+   */
+  readonly joined: readonly string[];
 }
 
 // ── 마이그레이션 ──────────────────────────────────────────────────────────
@@ -134,6 +140,18 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * (경험치는 달랐다 — 레벨이 떨어지면 못 이기는 전투에 갇힌다.)
    */
   3: (data) => ({ ...data, coins: 0 }),
+
+  /**
+   * v4 → v5 · 파티 구성원 (T-049b).
+   *
+   * 그전에는 인원이 고정이었다. **`party` 에 이미 누가 있는지를 그대로 쓴다** —
+   * 빈 목록으로 두면 복원할 때 처음 인원으로 되돌아가, 이미 만난 동료가 사라진다.
+   * 마이그레이션은 있는 정보를 버리지 않는 쪽을 고른다.
+   */
+  4: (data) => ({
+    ...data,
+    joined: isRecord(data['party']) ? Object.keys(data['party']) : [],
+  }),
 };
 
 /**
@@ -310,6 +328,15 @@ export function parseSave(
   const exp = readInt(data['exp'], 'exp', problems, { min: 0 });
   const coins = readInt(data['coins'], 'coins', problems, { min: 0 });
 
+  const joined: string[] = [];
+  const joinedRaw = readArray(data['joined'], 'joined', problems);
+  if (joinedRaw !== undefined) {
+    joinedRaw.forEach((entry, position) => {
+      const id = readText(entry, `joined[${position}]`, problems);
+      if (id !== undefined) joined.push(id);
+    });
+  }
+
   const collectedSites: string[] = [];
   const collectedRaw = readArray(data['collectedSites'], 'collectedSites', problems);
   if (collectedRaw !== undefined) {
@@ -344,6 +371,7 @@ export function parseSave(
     collectedSites,
     exp: exp as number,
     coins: coins as number,
+    joined,
   };
 }
 

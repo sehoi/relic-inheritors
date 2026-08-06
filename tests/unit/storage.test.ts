@@ -49,6 +49,7 @@ function sample(): SaveData {
     collectedSites: ['pillar-cache'],
     exp: 120,
     coins: 40,
+    joined: ['vanguard'],
   };
 }
 
