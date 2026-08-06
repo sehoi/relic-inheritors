@@ -4,6 +4,8 @@ import { item as itemById } from '../../data/items.js';
 import { HAVEN_STOCK } from '../../data/shop.js';
 import { buyItem, coinCount, getInventory } from '../partyStore.js';
 import { markScene, markShop } from '../domState.js';
+import { SHOP_KEYS, hintLine } from '../../data/keys.js';
+import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -32,7 +34,7 @@ export class ShopScene extends Phaser.Scene {
   private coinText!: Phaser.GameObjects.Text;
   private detailText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
-  private keys: Record<string, Phaser.Input.Keyboard.Key> = {};
+  private keys: BoundKeys = {};
 
   constructor() {
     super('shop');
@@ -49,7 +51,7 @@ export class ShopScene extends Phaser.Scene {
     this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x10131b).setOrigin(0, 0);
     this.add.text(8, 6, '상점', { fontFamily: 'monospace', fontSize: '13px', color: '#c8a15a' });
     this.add
-      .text(472, 8, '↑↓ 고르기  Enter 산다  Esc 닫기', {
+      .text(472, 8, hintLine(SHOP_KEYS), {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#6f7b8a',
@@ -99,26 +101,17 @@ export class ShopScene extends Phaser.Scene {
   private bindKeys(): void {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
-    const key = (code: string): Phaser.Input.Keyboard.Key => keyboard.addKey(code, true, true);
-    this.keys = {
-      up: key('UP'),
-      down: key('DOWN'),
-      confirm: key('ENTER'),
-      confirm2: key('SPACE'),
-      cancel: key('ESC'),
-      cancel2: key('Q'),
-    };
+    this.keys = bindSceneKeys(keyboard, SHOP_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {
-    return names.some((name) => {
-      const key = this.keys[name];
-      return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
-    });
+    return names.some((name) =>
+      (this.keys[name] ?? []).some((key) => Phaser.Input.Keyboard.JustDown(key)),
+    );
   }
 
   override update(): void {
-    if (this.pressed('cancel', 'cancel2')) {
+    if (this.pressed('cancel')) {
       this.scene.start('overworld', this.returnTo ?? {});
       return;
     }
@@ -132,7 +125,7 @@ export class ShopScene extends Phaser.Scene {
       this.render();
       return;
     }
-    if (this.pressed('confirm', 'confirm2')) this.purchase();
+    if (this.pressed('confirm')) this.purchase();
   }
 
   private purchase(): void {
