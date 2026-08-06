@@ -563,7 +563,7 @@ describe('상태이상과 커맨드', () => {
 });
 
 describe('아이템 커맨드', () => {
-  const herb: Item = { id: 'herb', name: '약초', effect: { kind: 'heal', amount: 40 } };
+  const herb: Item = { id: 'herb', name: '약초', effect: { kind: 'heal', hp: 40 } };
   const ember: Item = {
     id: 'ember',
     name: '잿불',

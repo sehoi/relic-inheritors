@@ -5,6 +5,7 @@ import { HAVEN_STOCK } from '../../data/shop.js';
 import { buyItem, coinCount, getInventory } from '../partyStore.js';
 import { markScene, markShop } from '../domState.js';
 import { SHOP_KEYS, hintLine } from '../../data/keys.js';
+import { scrollWindow } from '../../core/ui/scroll.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -20,6 +21,9 @@ import type { OverworldEntry } from './OverworldScene.js';
 
 const LINE = 16;
 
+/** 한 화면에 보이는 상품 수. 상세·알림 자리를 남기고 화면(270px)에 들어가는 만큼. */
+const ROWS = 11;
+
 export interface ShopEntry {
   readonly returnTo?: OverworldEntry;
 }
@@ -34,6 +38,7 @@ export class ShopScene extends Phaser.Scene {
   private coinText!: Phaser.GameObjects.Text;
   private detailText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
+  private moreText!: Phaser.GameObjects.Text;
   private keys: BoundKeys = {};
 
   constructor() {
@@ -62,14 +67,20 @@ export class ShopScene extends Phaser.Scene {
       .text(472, 24, '', { fontFamily: 'monospace', fontSize: '11px', color: '#d8b46a' })
       .setOrigin(1, 0);
 
+    /**
+     * 상품이 스무 종이라 다 그리면 화면(270px)을 넘는다 (T-053).
+     *
+     * 패널을 키우는 것으로는 못 푼다 — 상품이 더 늘면 같은 일이 벌어진다.
+     * `core/ui/scroll` 로 창을 넘긴다 (T-057 의 유물 목록과 같은 방식).
+     */
     this.add
-      .rectangle(8, 42, 464, LINE * this.stock.length + 12, 0x0b0c10)
+      .rectangle(8, 42, 464, LINE * ROWS + 12, 0x0b0c10)
       .setOrigin(0, 0)
       .setStrokeStyle(1, 0x6f7b8a);
 
     // 항목마다 별도 Text 를 정해진 y 에 둔다 — 한 덩어리로 그리면 커서 위치를 계산해야 하고,
     // 계산은 줄 수가 달라지는 순간 틀린다 (세이브 화면에서 실제로 그랬다).
-    this.rows = this.stock.map((_, i) =>
+    this.rows = Array.from({ length: ROWS }, (_, i) =>
       this.add.text(28, 50 + i * LINE, '', {
         fontFamily: 'monospace',
         fontSize: '11px',
@@ -81,8 +92,11 @@ export class ShopScene extends Phaser.Scene {
       fontSize: '11px',
       color: '#c8a15a',
     });
+    this.moreText = this.add
+      .text(464, 44, '', { fontFamily: 'monospace', fontSize: '8px', color: '#c8a15a' })
+      .setOrigin(1, 0);
 
-    this.detailText = this.add.text(8, 56 + LINE * this.stock.length + 12, '', {
+    this.detailText = this.add.text(8, 56 + LINE * ROWS + 12, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#9aa7b8',
@@ -146,14 +160,28 @@ export class ShopScene extends Phaser.Scene {
     const inventory = getInventory();
 
     this.coinText.setText(`은편 ${coinCount()}`);
-    this.stock.forEach((entry, i) => {
+
+    const window = scrollWindow(this.stock.length, this.index, ROWS);
+    this.rows.forEach((row, i) => {
+      const entry = this.stock[window.start + i];
+      if (entry === undefined) {
+        row.setText('');
+        return;
+      }
+
       const owned = inventory[entry.itemId] ?? 0;
       const name = itemById(entry.itemId).name;
       const full = owned >= CARRY_LIMIT ? ' (가득)' : '';
-      this.rows[i]?.setText(`${name.padEnd(6)}  은편 ${String(entry.price).padStart(3)}   지님 ${owned}${full}`);
-      this.rows[i]?.setColor(entry.price > coinCount() || owned >= CARRY_LIMIT ? '#6f7b8a' : '#e8e3d3');
+      row.setText(`${name.padEnd(7)}  은편 ${String(entry.price).padStart(3)}   지님 ${owned}${full}`);
+      row.setColor(entry.price > coinCount() || owned >= CARRY_LIMIT ? '#6f7b8a' : '#e8e3d3');
     });
-    this.cursor.setY(50 + this.index * LINE);
+
+    // 잘렸다는 사실을 알린다 — 없으면 짧은 목록으로 읽힌다.
+    this.moreText.setText(
+      [window.more.before ? '▲' : '', window.more.after ? '▼' : ''].filter(Boolean).join(' '),
+    );
+    // 커서는 창 안에서의 자리를 가리킨다.
+    this.cursor.setY(50 + (this.index - window.start) * LINE);
 
     const chosen = this.stock[this.index];
     this.detailText.setText(chosen === undefined ? '' : describeItem(chosen.itemId));
@@ -170,8 +198,14 @@ export class ShopScene extends Phaser.Scene {
 function describeItem(itemId: string): string {
   const effect = itemById(itemId).effect;
   switch (effect.kind) {
-    case 'heal':
-      return `한 명의 HP 를 ${effect.amount} 회복한다.`;
+    case 'heal': {
+      // HP·MP 를 한 효과가 다룬다 (T-053). 주는 것만 말한다 — 0 을 적으면 읽는 사람이 셈해야 한다.
+      const parts = [
+        ...((effect.hp ?? 0) > 0 ? [`HP 를 ${effect.hp ?? 0}`] : []),
+        ...((effect.mp ?? 0) > 0 ? [`MP 를 ${effect.mp ?? 0}`] : []),
+      ];
+      return `한 명의 ${parts.join(', ')} 회복한다.`;
+    }
     case 'cure':
       return `상태이상을 푼다: ${effect.ailments.join(', ')}`;
     case 'cleanse':
