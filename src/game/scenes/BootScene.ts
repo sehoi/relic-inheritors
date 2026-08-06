@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { assetCatalog } from '../assets/catalog.js';
 import { queueAssets } from '../assets/queueAssets.js';
 import { markScene } from '../domState.js';
-import { startingScene } from '../devFlags.js';
+import { startingScene, startWithFullParty } from '../devFlags.js';
+import { ROSTER } from '../../data/party.js';
+import { joinMember } from '../partyStore.js';
 
 /**
  * 에셋 로딩과 초기 설정 담당.
@@ -22,6 +24,11 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     markScene('boot');
+
+    // 인원에 따라 깨지는 화면을 인원 없이 확인할 수 없다 (`devFlags`).
+    if (startWithFullParty()) {
+      for (const member of ROSTER) joinMember(member.id);
+    }
 
     this.scene.start(startingScene());
   }

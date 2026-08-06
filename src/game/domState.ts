@@ -137,6 +137,18 @@ export function markLevel(level: number): void {
 }
 
 /**
+ * 파티 패널이 몇 명을 그렸고 어디서 끝나는가 (T-057).
+ *
+ * **인원이 늘면 조용히 화면 밖으로 밀려난다.** 한 사람당 42px 로 잡혀 있어 넷이 되자
+ * 셋째부터 잘렸는데, 잘린 쪽은 그냥 안 보일 뿐이라 예외도 콘솔 에러도 나지 않는다.
+ * 스모크가 "넷을 그렸는가" 와 "화면 안에서 끝나는가" 를 따로 물을 수 있어야 한다.
+ */
+export function markPartyPanel(rows: number, bottom: number): void {
+  document.body.dataset['partyRows'] = String(rows);
+  document.body.dataset['partyBottom'] = String(Math.round(bottom));
+}
+
+/**
  * 조작 안내가 떠 있는가 (T-055).
  *
  * 안내는 **글자로만 존재하는 UI** 라 화면에 떴는지 자동으로 확인할 방법이 이것뿐이다.
