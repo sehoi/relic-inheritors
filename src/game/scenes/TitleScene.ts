@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { markScene } from '../domState.js';
-import { resetParty } from '../partyStore.js';
+import { joinMember, resetParty } from '../partyStore.js';
+import { joinFullPartyIfRequested } from '../devFlags.js';
 import { resetClock, startClock } from '../playtime.js';
 import { browserStorage, readAllSlots } from '../save/storage.js';
 import type { SaveEntry } from './SaveScene.js';
@@ -66,6 +67,8 @@ export class TitleScene extends Phaser.Scene {
     this.input.keyboard?.once('keydown-ENTER', () => {
       // 새로 시작한다. 이전 회차의 상태가 남아 있으면 새 게임이 아니다.
       resetParty();
+      // 파티를 비웠으니 개발용 플래그를 다시 적용한다 (`devFlags`).
+      joinFullPartyIfRequested(joinMember);
       resetClock();
       startClock(Date.now());
       this.scene.start('overworld');

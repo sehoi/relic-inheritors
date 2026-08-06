@@ -44,7 +44,28 @@ export const OVERWORLD_KEYS = {
    */
   save: { label: '저장', keys: ['F'] },
   codex: { label: '유물 도감', keys: ['C'] },
+  /**
+   * 메뉴 (T-060).
+   *
+   * **화면마다 단축키를 하나씩 늘리는 것은 한계가 있다.** 지금도 R·F·C·H 넷인데
+   * 화면이 더 생기면 외울 것만 늘어난다. `Esc` 로 여는 메뉴가 그 답이고,
+   * 단축키는 **아는 사람을 위한 지름길**로 남긴다 — 없애면 익힌 손이 헛돈다.
+   */
+  menu: { label: '메뉴', keys: ['ESC'] },
   help: { label: '도움말', keys: ['H'] },
+} as const satisfies SceneKeys;
+
+export const MENU_KEYS = {
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
+  confirm: { label: '연다', keys: ['ENTER', 'SPACE'] },
+  cancel: { label: '닫기', keys: ['ESC', 'Q'] },
+} as const satisfies SceneKeys;
+
+export const STATUS_KEYS = {
+  up: { label: '위', keys: ['UP', 'W'], group: '고르기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '고르기' },
+  cancel: { label: '닫기', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
 
 export const CODEX_KEYS = {
@@ -98,6 +119,8 @@ export const TITLE_KEYS = {
 /** 도움말 화면이 이 순서로 보여준다. */
 export const KEY_GUIDE: readonly { readonly scene: string; readonly keys: SceneKeys }[] = [
   { scene: '탐색', keys: OVERWORLD_KEYS },
+  { scene: '메뉴', keys: MENU_KEYS },
+  { scene: '인물', keys: STATUS_KEYS },
   { scene: '전투', keys: BATTLE_KEYS },
   { scene: '유물', keys: RELIC_KEYS },
   { scene: '도감', keys: CODEX_KEYS },

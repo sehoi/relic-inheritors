@@ -727,6 +727,65 @@ test('도감이 진행률을 보여주고 못 본 유물을 가린다', async ({
 });
 
 /**
+ * 메뉴와 인물 화면 (T-060, T-061).
+ *
+ * **단축키를 몰라도 모든 화면에 닿을 수 있어야 한다.** R·F·C·H 넷까지 늘어난 뒤로
+ * 화면이 더 생기면 외울 것만 늘어난다. `Esc` 메뉴가 그 답이고, 단축키는 지름길로 남는다.
+ *
+ * 인물 화면은 **유물 보정이 실제로 반영되는지**를 함께 본다 — 기본값과 보정값을
+ * 나란히 그리는 화면이라, 둘이 같은 출처를 쓰면 차이가 늘 0 이 되고도 멀쩡해 보인다.
+ */
+test('Esc 메뉴로 인물 화면까지 가고 제자리로 돌아온다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off&party=full');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  // 제자리를 잃지 않는지 보려면 스폰에서 옮겨둬야 한다.
+  await stepKey(page, 'ArrowDown');
+  const where = await page.locator('body').getAttribute('data-player');
+
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'menu', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-menu-item', '인물');
+  await page.screenshot({ path: `${SHOT_DIR}/menu.png` });
+
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'status', { timeout: 10_000 });
+
+  // 넷을 다 넘겨볼 수 있어야 한다.
+  const first = await page.locator('body').getAttribute('data-status-actor');
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 's');
+  const last = await page.locator('body').getAttribute('data-status-actor');
+  expect(last, '파티원을 넘기지 못했다').not.toBe(first);
+  expect(last).toBe('seeker');
+
+  // 유물이 최대 HP 를 올려주고 있으면 차이가 0 이 아니어야 한다.
+  await stepKey(page, 'w');
+  await stepKey(page, 'w');
+  await stepKey(page, 'w');
+  await page.screenshot({ path: `${SHOT_DIR}/status.png` });
+
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+  await expect(page.locator('body'), '메뉴를 거쳤다고 제자리를 잃으면 안 된다').toHaveAttribute(
+    'data-player',
+    where ?? '',
+  );
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 전투 한 판을 끝까지 진행한다 (T-020).
  *
  * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —

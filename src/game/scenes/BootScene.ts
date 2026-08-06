@@ -2,8 +2,7 @@ import Phaser from 'phaser';
 import { assetCatalog } from '../assets/catalog.js';
 import { queueAssets } from '../assets/queueAssets.js';
 import { markScene } from '../domState.js';
-import { startingScene, startWithFullParty } from '../devFlags.js';
-import { ROSTER } from '../../data/party.js';
+import { joinFullPartyIfRequested, startingScene } from '../devFlags.js';
 import { joinMember } from '../partyStore.js';
 
 /**
@@ -26,9 +25,9 @@ export class BootScene extends Phaser.Scene {
     markScene('boot');
 
     // 인원에 따라 깨지는 화면을 인원 없이 확인할 수 없다 (`devFlags`).
-    if (startWithFullParty()) {
-      for (const member of ROSTER) joinMember(member.id);
-    }
+    // 타이틀을 건너뛰는 `?scene=battle` 경로를 위한 것이고, 타이틀을 거치는 쪽은
+    // "새로 시작" 이 파티를 비우므로 `TitleScene` 이 다시 부른다.
+    joinFullPartyIfRequested(joinMember);
 
     this.scene.start(startingScene());
   }
