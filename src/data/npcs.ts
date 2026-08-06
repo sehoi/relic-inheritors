@@ -53,7 +53,25 @@ export const NPCS_BY_MAP: Readonly<Partial<Record<MapId, readonly Npc[]>>> = {
     },
   ],
 
-  haven: [],
+  /**
+   * 거점 사람들 (GDD §8 — NPC 5명, T-054).
+   *
+   * **시설 곁에 세우되 시설을 막지 않는다.** 기록자는 정화소 옆, 주인은 상점 옆에 있어
+   * 무엇에 대해 말하는지가 자리로 드러난다 — 대사에서 "상점 말인데" 라고 설명할 필요가 없다.
+   *
+   * 거점은 통째로 안전지대라 어디에 세워도 습격당하지 않는다 (`data/zones.ts`).
+   */
+  haven: [
+    // 정화소 곁 — 무엇을 주워 왔는지 세는 사람.
+    { id: 'archivist', position: { x: 8, y: 10 }, tile: PORTRAITS.robed, dialogueId: 'haven-archivist' },
+    // 유적으로 나가는 길 곁. **y12 는 비워 둔다** — 거점 입구(36,12)에서 곧장 들어오는
+    // 줄이라, 여기 서면 사람이 문을 막는 꼴이 된다 (스모크가 실제로 걸렸다).
+    { id: 'veteran', position: { x: 33, y: 15 }, tile: PORTRAITS.scarred, dialogueId: 'haven-veteran' },
+    // 상점 곁 — 소지 한도를 알려준다.
+    { id: 'keeper', position: { x: 26, y: 16 }, tile: PORTRAITS.greying, dialogueId: 'haven-keeper' },
+    { id: 'child', position: { x: 14, y: 19 }, tile: PORTRAITS.braided, dialogueId: 'haven-child' },
+    { id: 'idler', position: { x: 20, y: 4 }, tile: PORTRAITS.hooded, dialogueId: 'haven-idler' },
+  ],
 };
 
 export function npcsForMap(mapId: MapId): readonly Npc[] {
