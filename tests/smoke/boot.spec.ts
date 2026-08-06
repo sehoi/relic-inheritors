@@ -678,6 +678,55 @@ test('넷이 모여도 전투 패널과 유물 목록이 잘리지 않는다', a
 });
 
 /**
+ * 유물 도감 (T-058).
+ *
+ * 장착 화면은 *지금 가진 것*으로 무엇을 할지 묻고, 도감은 *무엇이 있는지*에 답한다.
+ * **못 본 유물이 자리는 차지하되 내용은 비어 있어야** 한다 — 자리까지 없으면 몇 개가
+ * 남았는지 알 수 없고, 내용까지 있으면 주웠을 때 새로울 것이 없다.
+ */
+test('도감이 진행률을 보여주고 못 본 유물을 가린다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  await stepKey(page, 'c');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'codex', { timeout: 10_000 });
+
+  // 시작 유물은 여섯, 전체는 열둘. 못 본 여섯이 자리를 차지해야 남은 수가 보인다.
+  await expect(page.locator('body')).toHaveAttribute('data-codex-progress', '6/12');
+  await expect(page.locator('body')).toHaveAttribute('data-codex-hidden', 'no');
+  await page.screenshot({ path: `${SHOT_DIR}/codex.png` });
+
+  // 아래로 내려가면 아직 못 본 유물에 닿는다. 그 칸의 내용은 가려져 있어야 한다.
+  let sawHidden = false;
+  for (let i = 0; i < 11; i += 1) {
+    await stepKey(page, 's');
+    if ((await page.locator('body').getAttribute('data-codex-hidden')) === 'yes') {
+      sawHidden = true;
+      break;
+    }
+  }
+  expect(sawHidden, '못 본 유물이 하나도 없다 — 도감이 전부 펼쳐져 있다').toBe(true);
+  await page.screenshot({ path: `${SHOT_DIR}/codex-hidden.png` });
+
+  // 닫으면 제자리로 돌아온다.
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 전투 한 판을 끝까지 진행한다 (T-020).
  *
  * 승패는 시드에 달려 있으므로 결과를 못 박지 않는다. **끝까지 도달하는가**만 본다 —

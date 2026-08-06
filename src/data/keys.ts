@@ -43,7 +43,14 @@ export const OVERWORLD_KEYS = {
    * 저장만 벗어나 있었다. `F` 는 왼손 자리이면서 이동·기존 키와 겹치지 않는다.
    */
   save: { label: '저장', keys: ['F'] },
+  codex: { label: '유물 도감', keys: ['C'] },
   help: { label: '도움말', keys: ['H'] },
+} as const satisfies SceneKeys;
+
+export const CODEX_KEYS = {
+  up: { label: '위', keys: ['UP', 'W'], group: '넘기기' },
+  down: { label: '아래', keys: ['DOWN', 'S'], group: '넘기기' },
+  cancel: { label: '닫기', keys: ['ESC', 'Q'] },
 } as const satisfies SceneKeys;
 
 /**
@@ -93,6 +100,7 @@ export const KEY_GUIDE: readonly { readonly scene: string; readonly keys: SceneK
   { scene: '탐색', keys: OVERWORLD_KEYS },
   { scene: '전투', keys: BATTLE_KEYS },
   { scene: '유물', keys: RELIC_KEYS },
+  { scene: '도감', keys: CODEX_KEYS },
   { scene: '저장', keys: SAVE_KEYS },
   { scene: '상점', keys: SHOP_KEYS },
   { scene: '타이틀', keys: TITLE_KEYS },
