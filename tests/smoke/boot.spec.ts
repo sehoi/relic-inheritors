@@ -928,52 +928,60 @@ test('전멸한 뒤 새로 시작하면 시작 지점이다', async ({ page }) =
   });
 
   /**
-   * ⚠️ **이 테스트는 씬 데이터 잔존 자체를 재현하지 못한다.**
+   * **한 세션 안에서 층을 옮긴 뒤 죽어야 재현된다.**
    *
-   * 버그는 **한 세션 안에서** overworld 를 거쳐 타이틀로 돌아왔을 때 난다. 그 경로는
-   * 전멸뿐인데, 전멸을 확실히 만들려면 강한 적 앞에 세워야 하고 거기 세우려면 `?at=` 이
-   * 필요하다 — 그런데 `?at=` 은 새 게임에도 걸리므로 "시작 지점에서 시작했는가" 를
-   * 물을 수 없게 된다. 둘을 동시에 만족하는 배치를 찾지 못했다.
-   *
-   * 그래서 여기서는 **전멸이 타이틀로 이어지는가**까지만 본다. 새 게임의 시작 자리는
-   * 아래 `?at=` 없는 경로가 지킨다 — 씬 데이터가 남은 상태는 아니지만,
-   * 적어도 "새 게임이 시작 맵에서 시작한다" 는 성질은 붙들어 둔다.
+   * 버그는 씬에 넘긴 데이터가 남아 있는 것이므로, overworld 를 **값과 함께** 시작한 적이
+   * 있어야 한다 — 층 이동이 그 자리다. `?at=` 으로 갈 수도 있지만 그 플래그는 새 게임에도
+   * 걸려서 "시작 지점인가" 를 물을 수 없게 만든다. 계단으로 내려가면 플래그가 필요 없다.
    */
-  await page.goto('/?encounters=off&at=ruin-sanctum:33,8');
-  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
-  await page.locator('#game canvas').click();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-sanctum', { timeout: 10_000 });
-
-  await stepKey(page, 'ArrowRight');
-  await stepKey(page, 'Space');
-  await expect(page.locator('body')).toHaveAttribute('data-scene', 'battle', { timeout: 10_000 });
-
-  // 성소의 보스는 파티 Lv1 에게 이길 방법이 없다 (실측 Lv8 에 3%).
-  // 전투가 끝날 때까지만 누른다 — 끝난 뒤에도 누르면 타이틀을 지나쳐 새 게임이 시작된다.
-  for (let i = 0; i < 300; i += 1) {
-    if ((await page.locator('body').getAttribute('data-battle-phase')) === 'over') break;
-    await page.keyboard.press('Enter', { delay: 30 });
-  }
-  await expect(page.locator('body'), '보스에게 이겨버렸다').toHaveAttribute(
-    'data-battle-outcome',
-    'defeat',
-  );
-
-  await page.keyboard.press('Enter');
-  await expect(page.locator('body'), '전멸했는데 타이틀로 나가지 않았다').toHaveAttribute(
-    'data-scene',
-    'title',
-    { timeout: 10_000 },
-  );
-
-  // ── 새 게임은 시작 지점에서 (`?at=` 없이) ──────────────────────────────
-  await page.goto('/?encounters=off');
+  await page.goto('/');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
   await page.locator('#game canvas').click();
   await page.keyboard.press('Enter');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
-  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-entrance');
+
+  // 야영지 안의 계단(11,3)으로. 안전지대라 가는 길에는 전투가 없다.
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowRight');
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body'), '지하로 내려가지 못했다').toHaveAttribute(
+    'data-map',
+    'ruin-depths',
+    { timeout: 10_000 },
+  );
+
+  /**
+   * 지하는 적 Lv7 이고 파티는 Lv1 둘이다 — 몇 판 안에 전멸한다.
+   * 이기면 계속 걷고, 지면 타이틀로 나간다.
+   */
+  // 전투 한 판에도 입력이 여럿 든다 (커맨드 → 대상 → 연출). 넉넉히 돈다.
+  for (let round = 0; round < 400; round += 1) {
+    const scene = await page.locator('body').getAttribute('data-scene');
+    if (scene === 'title') break;
+
+    if (scene === 'battle') {
+      if ((await page.locator('body').getAttribute('data-battle-phase')) === 'over') {
+        await page.keyboard.press('Enter', { delay: 60 });
+      } else {
+        await page.keyboard.press('Enter', { delay: 30 });
+      }
+      continue;
+    }
+
+    await stepKey(page, round % 2 === 0 ? 'ArrowDown' : 'ArrowUp');
+  }
+
+  await expect(page.locator('body'), '전멸하지 않았다').toHaveAttribute('data-scene', 'title', {
+    timeout: 30_000,
+  });
+
+  // 여기서 새로 시작한다 — 페이지를 새로 열지 않는다. 그게 이 버그가 사는 자리다.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  await expect(page.locator('body'), '죽은 층에서 다시 시작했다').toHaveAttribute(
+    'data-map',
+    'ruin-entrance',
+  );
   await expect(page.locator('body')).toHaveAttribute('data-player', '8,6');
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
