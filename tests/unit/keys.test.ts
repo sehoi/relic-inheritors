@@ -97,6 +97,18 @@ describe('도움말', () => {
     }
   });
 
+  it('어느 화면에서나 WASD 로 고를 수 있다', () => {
+    // 탐색에서 WASD 로 걷던 사람이 메뉴에서만 방향키로 손을 옮겨야 했다.
+    // 한 게임 안에서 조작을 두 벌 익히게 하지 않는다.
+    for (const { scene, keys } of KEY_GUIDE) {
+      if (scene === '타이틀') continue;
+      const bound = new Set(Object.values(keys).flatMap((binding) => [...binding.keys]));
+
+      expect(bound.has('W'), `${scene} 에서 W 로 위를 고를 수 없다`).toBe(true);
+      expect(bound.has('S'), `${scene} 에서 S 로 아래를 고를 수 없다`).toBe(true);
+    }
+  });
+
   it('읽을 수 있는 이름으로 바꾼다', () => {
     expect(keyName('UP')).toBe('↑');
     expect(keyName('SPACE')).toBe('Space');

@@ -503,7 +503,7 @@ test('회수 지점에서 유물을 줍고, 저장·로드 뒤에도 사라져 �
   }
 
   // 저장하고 새로 열어 불러온다.
-  await stepKey(page, 'F5');
+  await stepKey(page, 'f');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await stepKey(page, 'Enter');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', /^ok/);
@@ -546,7 +546,7 @@ test('저장한 뒤 새로 열어 이어할 수 있다', async ({ page }) => {
   const where = await page.locator('body').getAttribute('data-player');
   expect(where, '움직이지 않았다').not.toBe('8,6');
 
-  await stepKey(page, 'F5');
+  await stepKey(page, 'f');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
   await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'save');
   await expect(page.locator('body')).toHaveAttribute('data-save-slots', 'empty,empty,empty');
@@ -613,6 +613,15 @@ test('도움말을 열고 닫는다. 저장 키는 걷기와 겹치지 않는다
   await stepKey(page, 's');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld');
   await expect(page.locator('body')).not.toHaveAttribute('data-player', before ?? '');
+
+  // **메뉴에서도 WASD 로 고른다.** 탐색에서 WASD 로 걷던 손이 메뉴에서 바뀌지 않아야 한다.
+  await stepKey(page, 'f');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '0');
+  await stepKey(page, 's');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '1');
+  await stepKey(page, 'w');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slot', '0');
 
   expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
 });
