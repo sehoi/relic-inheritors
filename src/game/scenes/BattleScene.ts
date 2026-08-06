@@ -15,7 +15,7 @@ import { chooseCommand } from '../../core/battle/ai.js';
 import { itemBlockReason, type Item } from '../../core/battle/item.js';
 import { erosionThreshold, skillBlockReason, type Skill } from '../../core/battle/skill.js';
 import { createRng } from '../../core/rng/index.js';
-import { BATTLE_TUNING, VICTORY_RECOVERY } from '../../data/battle.js';
+import { BATTLE_TUNING, VICTORY_RECOVERY, describeAilments } from '../../data/battle.js';
 import { ruinEncounter, mobTile, type Encounter } from '../../data/encounters.js';
 import { CHARACTER_SHEET, portraitOf } from '../../data/characters.js';
 import { item as itemById } from '../../data/items.js';
@@ -81,6 +81,9 @@ export class BattleScene extends Phaser.Scene {
   private enemyLabels = new Map<ActorId, Phaser.GameObjects.Text>();
   private partyGauges = new Map<ActorId, { hp: Gauge; mp: Gauge; erosion: Gauge }>();
   private partyLabels = new Map<ActorId, Phaser.GameObjects.Text>();
+  private partyAilments = new Map<ActorId, Phaser.GameObjects.Text>();
+  private enemyGauges = new Map<ActorId, Gauge>();
+  private enemyAilments = new Map<ActorId, Phaser.GameObjects.Text>();
   private menuText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private cursor!: Phaser.GameObjects.Text;
@@ -148,18 +151,42 @@ export class BattleScene extends Phaser.Scene {
     const enemies = this.state.actors.filter((a) => a.side === 'enemy');
     const gap = this.scale.width / (enemies.length + 1);
 
+    // 적이 몇이든 폭 안에서 나눠 갖는다. 막대가 이름보다 넓으면 서로 붙어 읽히지 않는다.
+    const barWidth = Math.min(64, Math.floor(gap) - 12);
+
     enemies.forEach((enemy, i) => {
-      const view = this.add
-        .image(gap * (i + 1), 62, 'tiles-dungeon', mobTile(enemy.id))
-        .setScale(2);
+      const x = gap * (i + 1);
+      const view = this.add.image(x, 62, 'tiles-dungeon', mobTile(enemy.id)).setScale(2);
       this.enemyViews.set(enemy.id, view);
       this.enemyLabels.set(
         enemy.id,
         this.add
-          .text(gap * (i + 1), 84, enemy.name, {
+          .text(x, 82, enemy.name, {
             fontFamily: 'monospace',
             fontSize: '9px',
             color: '#9aa7b8',
+          })
+          .setOrigin(0.5, 0),
+      );
+
+      /**
+       * 적의 HP 와 상태이상 (T-059).
+       *
+       * **없으면 누구를 칠지 고를 근거가 없다.** 거의 죽은 적을 마무리할지 온전한 적을
+       * 칠지가 대상 선택의 전부인데, 예전에는 이름만 떠 있어 전부 같아 보였다.
+       * 상태이상도 마찬가지다 — 독을 묻히는 스킬과 그냥 약한 스킬이 구분되지 않았다.
+       *
+       * **숫자가 아니라 막대다.** 적의 정확한 HP 는 이 게임이 답할 문제가 아니고,
+       * 필요한 것은 "얼마나 남았나" 뿐이다.
+       */
+      this.enemyGauges.set(enemy.id, new Gauge(this, x - barWidth / 2, 94, barWidth, 5, 0xb0304a));
+      this.enemyAilments.set(
+        enemy.id,
+        this.add
+          .text(x, 102, '', {
+            fontFamily: 'monospace',
+            fontSize: '8px',
+            color: '#c8a15a',
           })
           .setOrigin(0.5, 0),
       );
@@ -221,6 +248,16 @@ export class BattleScene extends Phaser.Scene {
       this.add
         .text(218, top, 'ER', { fontFamily: 'monospace', fontSize: '8px', color: '#8a4ab0' })
         .setOrigin(1, 0);
+
+      // 침묵이 걸린 줄 모르면 스킬 메뉴가 왜 막혔는지 알 수 없다.
+      this.partyAilments.set(
+        member.id,
+        this.add.text(36, top + 10, '', {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#c8a15a',
+        }),
+      );
     });
 
     markPartyPanel(party.length, PANEL_TOP + PANEL_PAD + party.length * row);
@@ -238,6 +275,8 @@ export class BattleScene extends Phaser.Scene {
 
       const label = this.partyLabels.get(id);
       label?.setColor(isAlive(actor) ? '#e8e3d3' : '#6f7b8a');
+      // 파티도 무엇에 걸렸는지 보여야 한다. 침묵이 걸린 줄 모르면 스킬 메뉴가 왜 막혔는지 알 수 없다.
+      this.partyAilments.get(id)?.setText(describeAilments(actor.ailments ?? []));
     }
 
     for (const [id, view] of this.enemyViews) {
@@ -246,6 +285,14 @@ export class BattleScene extends Phaser.Scene {
       view.setVisible(alive);
       // 이름표도 함께 감춘다. 사라진 적의 이름만 남아 있으면 아직 있는 것처럼 보인다.
       this.enemyLabels.get(id)?.setVisible(alive);
+      this.enemyAilments.get(id)?.setVisible(alive);
+      this.enemyAilments.get(id)?.setText(alive ? describeAilments(actor.ailments ?? []) : '');
+
+      const gauge = this.enemyGauges.get(id);
+      if (gauge !== undefined) {
+        gauge.setVisible(alive);
+        if (actor !== undefined) gauge.setRatio(actor.hp / actor.stats.maxHp);
+      }
     }
   }
 
