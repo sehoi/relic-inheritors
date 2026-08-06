@@ -5,7 +5,7 @@ import { portalsForMap } from '../../data/portals.js';
 import { zonesForMap } from '../../data/zones.js';
 import { OVERWORLD_KEYS, type KeyBinding } from '../../data/keys.js';
 import { CHARACTER_SHEET, PLAYER_PORTRAIT } from '../../data/characters.js';
-import { MAP_NAMES, STARTING_MAP, type MapId } from '../../data/maps.js';
+import { MAP_NAMES, STARTING_MAP, isMapId, type MapId } from '../../data/maps.js';
 import type { TileMap } from '../../core/world/tilemap.js';
 import {
   directionVector,
@@ -15,9 +15,9 @@ import {
   type Walker,
 } from '../../core/world/movement.js';
 import { blockedByOccupants, occupantInFront } from '../../core/world/interaction.js';
-import { portalAt, type Portal } from '../../core/world/portal.js';
+import { lockedReason, portalAt, type Portal } from '../../core/world/portal.js';
 import { zoneAt, type Zone } from '../../core/world/zone.js';
-import { remainingSites, siteAt, type RelicSite } from '../../core/world/site.js';
+import { remainingSites, siteAt, type RelicSite, type SiteReward } from '../../core/world/site.js';
 import { innPrice, type Facility } from '../../core/world/facility.js';
 import { sitesForMap } from '../../data/sites.js';
 import { CLEANSING, INN, facilitiesForMap } from '../../data/facilities.js';
@@ -32,6 +32,7 @@ import {
   cleanseParty,
   coinCount,
   collectSite,
+  heldKeys,
   collected,
   getInventory,
   joinMember,
@@ -41,7 +42,7 @@ import {
   restAtInn,
   worldRandom,
 } from '../partyStore.js';
-import { encountersEnabled } from '../devFlags.js';
+import { encountersEnabled, startingPlace } from '../devFlags.js';
 import type { BattleEntry } from './BattleScene.js';
 import type { RelicEntry } from './RelicScene.js';
 import type { CodexEntryParams } from './CodexScene.js';
@@ -134,7 +135,10 @@ export class OverworldScene extends Phaser.Scene {
   /** 타이틀에서 그냥 시작하면 데이터가 없다. 그때는 시작 맵의 스폰 지점에서 출발한다. */
   init(entry?: OverworldEntry): void {
     this.entry = entry ?? {};
-    this.mapId = this.entry.mapId ?? STARTING_MAP;
+    // 개발용 자리 지정(`?at=`)은 맵까지 정한다 — 좌표만 옮기면 시작 맵의 엉뚱한 칸에 선다.
+    const dev = startingPlace();
+    const devMap = dev !== undefined && isMapId(dev.mapId) ? dev.mapId : undefined;
+    this.mapId = this.entry.mapId ?? devMap ?? STARTING_MAP;
   }
 
   create(): void {
@@ -187,6 +191,12 @@ export class OverworldScene extends Phaser.Scene {
 
   /** 층 이동으로 들어왔으면 그 지점에서, 아니면 맵의 스폰 지점에서 시작한다. */
   private startingWalker(): Walker {
+    // 개발용 자리 지정 (`?at=`). 먼 자리에서 벌어지는 일을 확인하려면 거기 설 수 있어야 한다.
+    const dev = startingPlace();
+    if (dev !== undefined && dev.mapId === this.mapId && this.entry.arrival === undefined) {
+      return { position: { x: dev.x, y: dev.y }, facing: 'down' };
+    }
+
     const arrival = this.entry.arrival;
     if (arrival === undefined) return spawnWalker(this.map);
     return { position: { x: arrival.position.x, y: arrival.position.y }, facing: arrival.facing };
@@ -341,21 +351,16 @@ export class OverworldScene extends Phaser.Scene {
     const site = siteAt(this.remainingSites(), this.walker.position.x, this.walker.position.y);
     if (site === undefined) return false;
 
-    const gained = collectSite(site.id, site.relicId);
-    if (gained === undefined) return false;
+    const gained = collectSite(site.id, site.reward);
+    if (!gained) return false;
 
     this.siteViews.get(site.id)?.destroy();
     this.siteViews.delete(site.id);
 
-    const entry = relic(gained);
     this.dialogue = openDialogue(
       {
         id: `site:${site.id}`,
-        // 유물의 기록을 함께 띄운다 — 유물이 곧 서사 단위다 (GDD §2).
-        lines: [
-          { speaker: '회수', text: `${entry.name} 을(를) 손에 넣었다.` },
-          { text: entry.lore },
-        ],
+        lines: this.describeReward(site.reward),
       },
       TEXT_BOX_LAYOUT,
     );
@@ -363,6 +368,22 @@ export class OverworldScene extends Phaser.Scene {
     markDialogue(this.dialogue);
     markSites(this.remainingSites().length);
     return true;
+  }
+
+  /** 주운 것을 알린다. 유물은 기록을 함께 띄운다 — 유물이 곧 서사 단위다 (GDD §2). */
+  private describeReward(reward: SiteReward): { speaker?: string; text: string }[] {
+    if (reward.kind === 'key') {
+      return [
+        { speaker: '회수', text: `${reward.name} 을(를) 손에 넣었다.` },
+        { text: '어딘가의 문에 같은 모양이 박혀 있었다.' },
+      ];
+    }
+
+    const entry = relic(reward.relicId);
+    return [
+      { speaker: '회수', text: `${entry.name} 을(를) 손에 넣었다.` },
+      { text: entry.lore },
+    ];
   }
 
   private remainingSites(): readonly RelicSite[] {
@@ -392,6 +413,23 @@ export class OverworldScene extends Phaser.Scene {
   private checkPortal(): boolean {
     const portal = portalAt(this.portals, this.walker.position.x, this.walker.position.y);
     if (portal === undefined) return false;
+
+    /**
+     * 잠긴 문 (T-052).
+     *
+     * **무엇이 필요한지 말해준다.** 그냥 안 열리면 막힌 것이 버그로 보이고,
+     * 플레이어는 지나갈 수 있는 자리를 찾아 맵을 다시 헤맨다.
+     */
+    const locked = lockedReason(portal, heldKeys());
+    if (locked !== undefined) {
+      this.dialogue = openDialogue(
+        { id: `locked:${portal.id}`, lines: [{ text: locked }] },
+        TEXT_BOX_LAYOUT,
+      );
+      this.textBox.show(currentPage(this.dialogue), isLastPage(this.dialogue));
+      markDialogue(this.dialogue);
+      return true;
+    }
 
     this.leaving = true;
     this.scene.restart({

@@ -252,10 +252,28 @@ describe('회수 지점 (T-039)', () => {
   it('시작부터 지닌 유물을 놓아두지 않는다', () => {
     const redundant = Object.values(SITES_BY_MAP)
       .flat()
-      .filter((site) => STARTING_RELICS.includes(site.relicId))
-      .map((site) => `${site.id}: ${site.relicId}`);
+      .filter((site) => site.reward.kind === 'relic' && STARTING_RELICS.includes(site.reward.relicId))
+      .map((site) => site.id);
 
     expect(redundant, `이미 지닌 유물입니다:\n${redundant.join('\n')}`).toEqual([]);
+  });
+
+  it('잠긴 문의 열쇠를 어딘가에서 주울 수 있다 (T-052)', () => {
+    // **열쇠 없는 잠긴 문은 그냥 벽이다.** 문을 옮기거나 회수 지점을 지우면
+    // 조용히 그렇게 되는데, 화면에서는 "아직 못 찾았다" 와 구분되지 않는다.
+    const dropped = new Set(
+      Object.values(SITES_BY_MAP)
+        .flat()
+        .flatMap((site) => (site.reward.kind === 'key' ? [site.reward.keyId] : [])),
+    );
+
+    const orphans = Object.values(PORTALS_BY_MAP)
+      .flat()
+      .flatMap((portal) => (portal.lock === undefined ? [] : [portal]))
+      .filter((portal) => !dropped.has(portal.lock?.keyId ?? ''))
+      .map((portal) => `${portal.id}: ${portal.lock?.keyId ?? '?'}`);
+
+    expect(orphans, `열쇠를 얻을 수 없는 잠긴 문입니다:\n  ${orphans.join('\n  ')}`).toEqual([]);
   });
 
   it('모든 유물을 손에 넣을 수 있다 (T-062)', () => {
@@ -266,7 +284,7 @@ describe('회수 지점 (T-039)', () => {
       ...STARTING_RELICS,
       ...Object.values(SITES_BY_MAP)
         .flat()
-        .map((site) => site.relicId),
+        .flatMap((site) => (site.reward.kind === 'relic' ? [site.reward.relicId] : [])),
     ]);
 
     const unreachable = Object.keys(RELICS).filter((id) => !obtainable.has(id));

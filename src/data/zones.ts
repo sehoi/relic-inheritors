@@ -140,6 +140,50 @@ export const ZONES_BY_MAP: Readonly<Record<MapId, readonly Zone[]>> = {
       encounters: false,
     },
   ],
+
+  /**
+   * 지하 2층 (T-052).
+   *
+   * **성소만 안전지대다.** 문을 열고 들어간 자리에서까지 습격당하면 열쇠를 찾아 한 바퀴
+   * 돈 것이 아무 의미가 없다. 나머지는 전부 위험하다 — 여기는 은신처가 있을 만큼
+   * 사람이 다녀간 곳이 아니다.
+   */
+  'ruin-sanctum': [
+    {
+      id: 'sanctum-landing',
+      name: '아래 계단참',
+      rects: [
+        { x: 2, y: 2, width: 9, height: 8 },
+        { x: 5, y: 10, width: 2, height: 12 },
+      ],
+      encounters: true,
+    },
+    {
+      id: 'sanctum-channel',
+      name: '가라앉은 수로',
+      rects: [
+        { x: 2, y: 22, width: 20, height: 6 },
+        // y14 는 전실이 가져간다 — 통로가 방으로 들어서는 칸이라 방 쪽 이름이 맞다.
+        { x: 20, y: 15, width: 2, height: 7 },
+      ],
+      encounters: true,
+    },
+    {
+      id: 'sanctum-antechamber',
+      name: '문 앞 방',
+      rects: [
+        { x: 18, y: 10, width: 12, height: 5 },
+        { x: 30, y: 11, width: 1, height: 1 },
+      ],
+      encounters: true,
+    },
+    {
+      id: 'sanctum-inner',
+      name: '성소',
+      rects: [{ x: 31, y: 3, width: 7, height: 10 }],
+      encounters: false,
+    },
+  ],
 };
 
 export function zonesForMap(mapId: MapId): readonly Zone[] {

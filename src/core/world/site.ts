@@ -16,11 +16,20 @@ import { Problems, createDuplicateGuard } from '../validation/index.js';
 import type { GridPosition } from './movement.js';
 import { isSolid, type TileMap } from './tilemap.js';
 
+/**
+ * 여기서 얻는 것.
+ *
+ * **유물 아니면 열쇠, 정확히 하나다** (T-052). 둘 다 담을 수 있게 두면 "유물도 주고
+ * 열쇠도 주는 자리" 가 생기는데, 그러면 밟았을 때 무엇을 얻었는지 한 줄로 말할 수 없다.
+ */
+export type SiteReward =
+  | { readonly kind: 'relic'; readonly relicId: string }
+  | { readonly kind: 'key'; readonly keyId: string; readonly name: string };
+
 export interface RelicSite {
   readonly id: string;
   readonly position: GridPosition;
-  /** 여기서 얻는 유물. */
-  readonly relicId: string;
+  readonly reward: SiteReward;
 }
 
 export function siteAt(
@@ -77,15 +86,20 @@ export function validateSites(
     if (blocked.has(`${x},${y}`)) {
       at.add(`(${x}, ${y}) 에 이미 계단이나 NPC 가 있습니다. 밟았을 때 무엇이 발동할지 모호해집니다.`);
     }
-    if (!relics.has(site.relicId)) {
-      at.add(`없는 유물을 놓아두었습니다: "${site.relicId}"`);
+    if (site.reward.kind === 'relic' && !relics.has(site.reward.relicId)) {
+      at.add(`없는 유물을 놓아두었습니다: "${site.reward.relicId}"`);
     }
   }
 
   problems.throwIfAny('회수 지점');
 }
 
-/** 같은 유물을 두 곳에서 줍게 두지 않는다. 두 번째는 아무 일도 일어나지 않아 버그로 보인다. */
+/** 보상을 하나의 문자열로. 중복 검사와 화면이 같은 이름을 쓴다. */
+export function rewardKey(reward: SiteReward): string {
+  return reward.kind === 'relic' ? `relic:${reward.relicId}` : `key:${reward.keyId}`;
+}
+
+/** 같은 것을 두 곳에서 줍게 두지 않는다. 두 번째는 아무 일도 일어나지 않아 버그로 보인다. */
 export function duplicateRewards(
   sitesByMap: Readonly<Record<string, readonly RelicSite[]>>,
 ): readonly string[] {
@@ -94,8 +108,9 @@ export function duplicateRewards(
 
   for (const sites of Object.values(sitesByMap)) {
     for (const site of sites) {
-      if (seen.has(site.relicId)) duplicated.add(site.relicId);
-      seen.add(site.relicId);
+      const key = rewardKey(site.reward);
+      if (seen.has(key)) duplicated.add(key);
+      seen.add(key);
     }
   }
   return [...duplicated].sort();

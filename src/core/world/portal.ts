@@ -15,10 +15,42 @@ export interface PortalTarget {
   readonly facing: Direction;
 }
 
+/**
+ * 잠긴 문 (T-052).
+ *
+ * **막는 것이 목적이 아니라 순서를 만드는 것이 목적이다.** 열쇠를 찾기 전에는 못 지나가므로,
+ * 층을 한 바퀴 돌아야 안쪽에 닿는다 — 그러지 않으면 넓은 층이 그냥 지름길이 된다.
+ *
+ * 열쇠는 **가진 것을 확인만 하고 쓰지 않는다.** 소모되면 두 번째 방문 때 다시 막히는데,
+ * 이미 연 문이 다시 잠기는 것은 진행이 아니라 사고로 읽힌다.
+ */
+export interface PortalLock {
+  /** 이 열쇠를 지녀야 지날 수 있다. */
+  readonly keyId: string;
+  /** 막혔을 때 띄울 말. 무엇이 필요한지 모르면 막힌 것이 버그로 보인다. */
+  readonly message: string;
+}
+
 export interface Portal {
   readonly id: string;
   readonly position: GridPosition;
   readonly target: PortalTarget;
+  readonly lock?: PortalLock;
+}
+
+/**
+ * 이 포탈이 지금 막혀 있는가. 막혔으면 띄울 말을, 아니면 `undefined`.
+ *
+ * 판정을 여기 두는 이유는 **화면과 시뮬레이터가 같은 답을 쓰게** 하기 위해서다.
+ * 씬에서 `if (lock && !keys.has(...))` 를 쓰면 다른 곳에서 같은 조건을 또 쓰게 되고,
+ * 그 둘은 반드시 언젠가 어긋난다.
+ */
+export function lockedReason(
+  portal: Portal,
+  heldKeys: ReadonlySet<string>,
+): string | undefined {
+  if (portal.lock === undefined) return undefined;
+  return heldKeys.has(portal.lock.keyId) ? undefined : portal.lock.message;
 }
 
 export function portalAt(

@@ -38,12 +38,19 @@ function validSave(): Record<string, unknown> {
     exp: 120,
     coins: 40,
     joined: ['vanguard', 'caster'],
+    keys: ['sanctum-seal'],
   };
 }
 
-/** v4 세이브 — 구성원 목록만 없던 시절. */
+/** v5 세이브 — 잠긴 문이 아직 없던 시절. */
+function v5Save(): Record<string, unknown> {
+  const { keys: _drop, ...rest } = validSave();
+  return { ...rest, version: 5 };
+}
+
+/** v4 세이브 — 구성원 목록도 열쇠도 없던 시절. */
 function v4Save(): Record<string, unknown> {
-  const { joined: _drop, ...rest } = validSave();
+  const { joined: _joined, keys: _keys, ...rest } = validSave();
   return { ...rest, version: 4 };
 }
 
@@ -54,6 +61,7 @@ function v1Save(): Record<string, unknown> {
     exp: _exp,
     coins: _coins,
     joined: _joined,
+    keys: _keys,
     ...rest
   } = validSave();
   return { ...rest, version: 1 };
@@ -61,13 +69,13 @@ function v1Save(): Record<string, unknown> {
 
 /** v2 세이브 — 회수 지점은 있고 경험치·은편은 없던 시절. */
 function v2Save(): Record<string, unknown> {
-  const { exp: _exp, coins: _coins, joined: _joined, ...rest } = validSave();
+  const { exp: _exp, coins: _coins, joined: _joined, keys: _keys, ...rest } = validSave();
   return { ...rest, version: 2 };
 }
 
 /** v3 세이브 — 은편과 구성원 목록이 없던 시절. */
 function v3Save(): Record<string, unknown> {
-  const { coins: _coins, joined: _joined, ...rest } = validSave();
+  const { coins: _coins, joined: _joined, keys: _keys, ...rest } = validSave();
   return { ...rest, version: 3 };
 }
 
@@ -275,9 +283,16 @@ describe('실제 마이그레이션', () => {
     expect([...parseSave(v4Save()).joined].sort()).toEqual(['caster', 'vanguard']);
   });
 
+  it('v5 → v6 · 열쇠 없이 시작한다', () => {
+    // 잠긴 문이 그전에는 없었으므로 열쇠를 가진 사람도 없다. 빈 목록이 정확한 답이다 —
+    // 열쇠가 있는 유일한 자리(3층)는 이 버전과 함께 생겼다.
+    expect(parseSave(v5Save()).keys).toEqual([]);
+  });
+
   it('최신 세이브는 손대지 않는다', () => {
     expect(parseSave(validSave()).exp).toBe(120);
     expect(parseSave(validSave()).coins).toBe(40);
+    expect(parseSave(validSave()).keys).toEqual(['sanctum-seal']);
     expect(parseSave(validSave()).collectedSites).toEqual(['pillar-cache']);
   });
 });

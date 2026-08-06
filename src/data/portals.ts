@@ -36,6 +36,36 @@ export const PORTALS_BY_MAP: Readonly<Record<MapId, readonly Portal[]>> = {
       position: { x: 5, y: 5 },
       target: { mapId: 'ruin-entrance', position: { x: 11, y: 4 }, facing: 'down' },
     },
+    // 물 고인 바닥 동쪽 끝. 지하를 한 바퀴 돌아야 닿는다.
+    // 은신처(x32~34, y25~27)를 피한다 — 거기엔 탐구자가 서 있다.
+    {
+      id: 'depths-stairs-down',
+      position: { x: 33, y: 21 },
+      target: { mapId: 'ruin-sanctum', position: { x: 5, y: 4 }, facing: 'down' },
+    },
+  ],
+
+  'ruin-sanctum': [
+    {
+      id: 'sanctum-stairs-up',
+      position: { x: 5, y: 3 },
+      target: { mapId: 'ruin-depths', position: { x: 33, y: 22 }, facing: 'down' },
+    },
+    /**
+     * 성소로 드는 문 (T-052).
+     *
+     * **막는 것이 목적이 아니라 순서를 만드는 것이 목적이다.** 열쇠는 이 층 남쪽 끝에
+     * 있으므로 한 바퀴 돌아야 안쪽에 닿는다 — 그러지 않으면 넓은 층이 그냥 지름길이 된다.
+     */
+    {
+      id: 'sanctum-door',
+      position: { x: 30, y: 11 },
+      target: { mapId: 'ruin-sanctum', position: { x: 32, y: 11 }, facing: 'right' },
+      lock: {
+        keyId: 'sanctum-seal',
+        message: '문에 각인이 박혀 있다. 같은 모양의 것이 있어야 열린다.',
+      },
+    },
   ],
 };
 

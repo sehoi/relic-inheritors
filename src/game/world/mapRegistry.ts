@@ -1,5 +1,6 @@
 import rawRuinEntrance from '../../data/maps/ruin-entrance.tmj?raw';
 import rawRuinDepths from '../../data/maps/ruin-depths.tmj?raw';
+import rawRuinSanctum from '../../data/maps/ruin-sanctum.tmj?raw';
 import rawHaven from '../../data/maps/haven.tmj?raw';
 import { parseTiledMap, type TileMap } from '../../core/world/tilemap.js';
 import type { MapId } from '../../data/maps.js';
@@ -16,6 +17,7 @@ import type { MapId } from '../../data/maps.js';
 const RAW_MAPS: Readonly<Record<MapId, string>> = {
   'ruin-entrance': rawRuinEntrance,
   'ruin-depths': rawRuinDepths,
+  'ruin-sanctum': rawRuinSanctum,
   haven: rawHaven,
 };
 

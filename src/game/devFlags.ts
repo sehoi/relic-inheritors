@@ -52,6 +52,27 @@ export function showAllMobs(): boolean {
 }
 
 /**
+ * `?at=ruin-sanctum:29,11` 이면 그 자리에서 시작한다.
+ *
+ * **먼 자리에서 벌어지는 일을 확인하려면 거기 설 수 있어야 한다.** 3층 문 앞까지
+ * 걸어가려면 두 층을 가로질러야 하는데, 그 여정은 다른 테스트의 몫이고 여기서 필요한 것은
+ * **문 앞에 섰을 때 무슨 일이 벌어지는가**뿐이다. 이 뒷문이 없으면 확인을 포기하거나
+ * 아무것도 재지 않는 테스트를 쓰게 된다 — 후자가 더 나쁘다.
+ */
+export function startingPlace():
+  | { readonly mapId: string; readonly x: number; readonly y: number }
+  | undefined {
+  const raw = flag('at');
+  if (raw === undefined) return undefined;
+
+  const [mapId, coords] = raw.split(':');
+  const [x, y] = (coords ?? '').split(',').map(Number);
+  if (mapId === undefined || !Number.isInteger(x) || !Number.isInteger(y)) return undefined;
+
+  return { mapId, x: x as number, y: y as number };
+}
+
+/**
  * 요청됐으면 동료를 전부 합류시킨다.
  *
  * **파티를 비우는 곳마다 불러야 한다.** 부팅 때 한 번만 했더니 타이틀의 "새로 시작"

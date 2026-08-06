@@ -50,6 +50,7 @@ function sample(): SaveData {
     exp: 120,
     coins: 40,
     joined: ['vanguard'],
+    keys: [],
   };
 }
 
