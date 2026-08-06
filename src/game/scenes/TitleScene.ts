@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { markScene } from '../domState.js';
 import { joinMember, resetParty } from '../partyStore.js';
 import { joinFullPartyIfRequested } from '../devFlags.js';
-import { resetClock, startClock } from '../playtime.js';
+import { resetClock, startClock, stopClock } from '../playtime.js';
 import { browserStorage, readAllSlots } from '../save/storage.js';
 import type { SaveEntry } from './SaveScene.js';
 import type { OverworldEntry } from './OverworldScene.js';
@@ -14,6 +14,16 @@ export class TitleScene extends Phaser.Scene {
 
   create(): void {
     markScene('title');
+
+    /**
+     * 시계를 멈춘다 (T-043).
+     *
+     * **타이틀은 플레이가 아니다.** 전멸하고 돌아와 한참 들여다보는 동안에도 시간이
+     * 흐르고 있었다 — `stopClock` 은 만들어만 두고 아무 데서도 부르지 않았다.
+     * 새 게임은 어차피 `resetClock` 하고, 이어하기는 세이브의 값으로 덮으므로
+     * 여기서 멈추는 것이 유일하게 뜻이 있는 자리다.
+     */
+    stopClock(Date.now());
 
     const { width, height } = this.scale;
 

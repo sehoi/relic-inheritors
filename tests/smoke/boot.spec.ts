@@ -1043,6 +1043,124 @@ test('메뉴의 저장과 이어하기가 각각 제 모드로 열린다', async
 });
 
 /**
+ * 여관이 묻고 나서 값을 받는다 (T-048).
+ *
+ * **얼마인지 모르고 쓰는 것은 불친절하다.** 은편은 아이템에도 쓰는 자원이라
+ * "지금 자는 게 나은가" 가 실제 판단이다.
+ */
+test('여관은 값을 알려주고 묻는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/?encounters=off');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  // 거점으로 나간다 (정화소 테스트와 같은 길).
+  for (let i = 0; i < 6; i += 1) await stepKey(page, 'ArrowLeft');
+  for (let i = 0; i < 4; i += 1) await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'haven', { timeout: 10_000 });
+  await expect(page.locator('body')).toHaveAttribute('data-player', '35,12');
+
+  // 여관(28,8) 아래 칸으로. 도착 (35,12) → 왼쪽 7 → 위 3.
+  for (let i = 0; i < 7; i += 1) await stepKey(page, 'ArrowLeft');
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-player', '28,9');
+  await expect(page.locator('body')).toHaveAttribute('data-facing', 'up');
+
+  /**
+   * 은편이 0 이라 **묻지 않고 값만 알려준다** — 고를 수 없는 것을 고르라고 하지 않는다.
+   * 확인 창을 띄우는 쪽은 아래 전멸 테스트가 지난다.
+   */
+  await stepKey(page, 'Space');
+  await expect(page.locator('body'), '여관이 아무 말도 하지 않았다').toHaveAttribute(
+    'data-dialogue',
+    /^1\//,
+  );
+  await page.screenshot({ path: `${SHOT_DIR}/inn.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
+ * 전멸해도 마지막 저장 지점에서 다시 (T-042).
+ *
+ * **타이틀로 튕기면 이어하기를 다시 찾아 들어가야 한다** — 진 것에 더해 길까지 잃는다.
+ * 이어할 세이브가 있을 때만 묻는다: 없으면 고를 것이 하나뿐이고 그건 질문이 아니다.
+ */
+test('전멸하면 마지막 저장 지점에서 다시 할지 묻는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => {
+    errors.push(`[pageerror] ${error.message}`);
+  });
+
+  await page.goto('/');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'title', { timeout: 20_000 });
+  await page.locator('#game canvas').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  // 먼저 저장해 둔다 — 세이브가 없으면 묻지 않고 타이틀로 간다.
+  await stepKey(page, 'f');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'save', { timeout: 10_000 });
+  await stepKey(page, 'Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-save-slots', /^ok/);
+  await stepKey(page, 'Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-scene', 'overworld', { timeout: 10_000 });
+
+  // 계단으로 지하에 내려가 죽는다.
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowRight');
+  for (let i = 0; i < 3; i += 1) await stepKey(page, 'ArrowUp');
+  await expect(page.locator('body')).toHaveAttribute('data-map', 'ruin-depths', { timeout: 10_000 });
+
+  /**
+   * 죽을 때까지 걷고 싸운다. 전멸한 뒤에도 Enter 를 계속 누르면
+   * **전멸 알림 → 선택 창 → 첫 항목(마지막 저장 지점)** 순으로 넘어간다.
+   *
+   * 타이밍을 짚어 확인하지 않는다 — 한 프레임 차이로 어디까지 갔는지가 달라져서,
+   * 그걸 맞히려 들면 테스트가 실제 동작이 아니라 속도를 재게 된다. **어디에 닿는가**만 본다.
+   */
+  let sawDefeat = false;
+  for (let round = 0; round < 400; round += 1) {
+    const scene = await page.locator('body').getAttribute('data-scene');
+    if (scene === 'save' || scene === 'title') break;
+
+    if ((await page.locator('body').getAttribute('data-battle-outcome')) === 'defeat') {
+      sawDefeat = true;
+    }
+
+    if (scene === 'battle') {
+      await page.keyboard.press('Enter', { delay: 30 });
+    } else {
+      await stepKey(page, round % 2 === 0 ? 'ArrowDown' : 'ArrowUp');
+    }
+  }
+
+  expect(sawDefeat, '전멸하지 않았다').toBe(true);
+
+  // **타이틀이 아니라 불러오기 화면이다.** 진 것에 더해 길까지 잃지 않는다.
+  await expect(page.locator('body'), '전멸하고 타이틀로 튕겼다').toHaveAttribute(
+    'data-scene',
+    'save',
+    { timeout: 10_000 },
+  );
+  await expect(page.locator('body')).toHaveAttribute('data-save-mode', 'load');
+  await page.screenshot({ path: `${SHOT_DIR}/defeat-resume.png` });
+
+  expect(errors, `콘솔/페이지 에러가 발생했습니다:\n${errors.join('\n')}`).toEqual([]);
+});
+
+/**
  * 잡몹 여섯 종이 한 화면에 선다 (T-050).
  *
  * **타일 번호는 눈으로 봐야 안다.** 시트에서 번호만 보고 고르면 "떠도는 불씨" 자리에

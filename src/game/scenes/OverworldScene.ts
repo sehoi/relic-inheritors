@@ -66,6 +66,7 @@ import { renderTilemapLayer } from '../world/renderTilemap.js';
 import { TextBox } from '../ui/TextBox.js';
 import { LocationBanner } from '../ui/LocationBanner.js';
 import { KeyGuide } from '../ui/KeyGuide.js';
+import { ChoiceBox } from '../ui/ChoiceBox.js';
 import {
   markCamera,
   markDialogue,
@@ -123,6 +124,7 @@ export class OverworldScene extends Phaser.Scene {
   private codexKeys: Phaser.Input.Keyboard.Key[] = [];
   private menuKeys: Phaser.Input.Keyboard.Key[] = [];
   private keyGuide!: KeyGuide;
+  private choiceBox!: ChoiceBox;
 
   /** 이동 트윈이 도는 동안 입력을 잠근다. 큐에 쌓지 않는다 — 눌린 만큼 미끄러지면 조작감이 나빠진다. */
   private stepping = false;
@@ -184,6 +186,7 @@ export class OverworldScene extends Phaser.Scene {
 
     this.banner = new LocationBanner(this);
     this.keyGuide = new KeyGuide(this);
+    this.choiceBox = new ChoiceBox(this);
     this.textBox = new TextBox(this);
     this.bindKeys();
 
@@ -224,6 +227,23 @@ export class OverworldScene extends Phaser.Scene {
 
     // 도움말이 떠 있는 동안에는 걷지 않는다. 안내를 읽으면서 조우에 걸리면 곤란하다.
     if (this.keyGuide.isOpen) return;
+
+    /**
+     * 고르는 창이 떠 있으면 **다른 입력은 전부 그쪽 것이다** (T-048).
+     *
+     * ⚠️ **열려 있을 때만 입력을 읽는다.** `JustDown` 은 부르는 순간 소비되므로,
+     * 닫힌 창에 넘기려고 읽기만 해도 아래 코드가 그 입력을 못 본다 — 실제로 여관 앞에서
+     * Space 를 눌러도 아무 일이 없었다. "물어보고 버리는" 것과 "안 물어보는" 것이 다르다.
+     */
+    if (this.choiceBox.isOpen) {
+      this.choiceBox.handle({
+        up: this.movePressed('up'),
+        down: this.movePressed('down'),
+        confirm: this.interactJustPressed(),
+        cancel: this.menuJustPressed(),
+      });
+      return;
+    }
 
     // 대화 중에는 걷지 않는다. 말하면서 걸어가면 대화 상대가 화면 밖으로 나간다.
     if (this.dialogue !== undefined) {
@@ -564,11 +584,11 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * 여관에서 쉰다 (T-041a).
+   * 여관에서 쉰다 (T-041a, 확인 창은 T-048).
    *
-   * **묻지 않고 바로 쉰다.** 여기까지 걸어와 마주 보고 누른 것이 곧 의사표시다.
-   * 예/아니오 창을 띄우려면 대화 시스템에 선택지가 있어야 하는데, 그건 별도 태스크다 —
-   * 다만 값을 먼저 알려주지 않고 쓰는 것은 불친절하므로 백로그에 남겼다.
+   * **값을 먼저 알려주고 묻는다.** 예전에는 마주 보고 누르면 바로 값을 치렀는데,
+   * 걸어와서 누른 것이 의사표시이긴 해도 **얼마인지 모르고 쓰는 것**은 불친절하다.
+   * 은편은 아이템에도 쓰는 자원이라 "지금 자는 게 나은가" 가 실제 판단이다.
    */
   private useInn(facility: Facility): void {
     const price = innPrice(partyLevel(), INN);
@@ -583,19 +603,33 @@ export class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    const spent = restAtInn(price);
-    this.openLines({
-      id: `facility:${facility.id}`,
-      lines:
-        spent === undefined
-          ? [
-              { speaker: facility.name, text: `하룻밤에 은편 ${price}. 지금은 ${coinCount()} 뿐이다.` },
-            ]
-          : [
-              { speaker: facility.name, text: `은편 ${spent} 을(를) 치르고 눈을 붙였다.` },
-              { text: '몸은 나아졌지만, 새겨진 것은 그대로다.' },
-            ],
-    });
+    // 못 낼 값이면 묻지 않는다 — 고를 수 없는 것을 고르라고 하는 셈이다.
+    if (price > coinCount()) {
+      this.openLines({
+        id: `facility:${facility.id}`,
+        lines: [
+          { speaker: facility.name, text: `하룻밤에 은편 ${price}. 지금은 ${coinCount()} 뿐이다.` },
+        ],
+      });
+      return;
+    }
+
+    this.choiceBox.ask(
+      `${facility.name} — 하룻밤에 은편 ${price}. 지금 ${coinCount()} 있다.`,
+      ['묵는다', '그만둔다'],
+      (picked) => {
+        if (picked !== 0) return;
+
+        const spent = restAtInn(price);
+        this.openLines({
+          id: `facility:${facility.id}`,
+          lines: [
+            { speaker: facility.name, text: `은편 ${spent ?? price} 을(를) 치르고 눈을 붙였다.` },
+            { text: '몸은 나아졌지만, 새겨진 것은 그대로다.' },
+          ],
+        });
+      },
+    );
   }
 
   private openLines(script: DialogueScript): void {
@@ -748,6 +782,14 @@ export class OverworldScene extends Phaser.Scene {
       if (this.moveKeys[direction].some((k) => k.isDown)) return direction;
     }
     return undefined;
+  }
+
+  /**
+   * 방향키가 **막 눌렸는가**. 걷기와 달리 메뉴는 누른 순간에만 반응해야 한다 —
+   * `isDown` 을 쓰면 한 번 누른 사이에 커서가 목록 끝까지 달린다.
+   */
+  private movePressed(direction: Direction): boolean {
+    return this.moveKeys[direction].some((key) => Phaser.Input.Keyboard.JustDown(key));
   }
 
   // ── 표현 ────────────────────────────────────────────────────────────────
