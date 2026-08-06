@@ -1,5 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { RELICS, STARTING_RELICS } from '../../src/data/relics.js';
+
+const TOTAL_RELICS = Object.keys(RELICS).length;
 
 const SHOT_DIR = 'docs/screenshots';
 
@@ -702,8 +705,19 @@ test('도감이 진행률을 보여주고 못 본 유물을 가린다', async ({
   await stepKey(page, 'c');
   await expect(page.locator('body')).toHaveAttribute('data-scene', 'codex', { timeout: 10_000 });
 
-  // 시작 유물은 여섯, 전체는 열둘. 못 본 여섯이 자리를 차지해야 남은 수가 보인다.
-  await expect(page.locator('body')).toHaveAttribute('data-codex-progress', '6/12');
+  /**
+   * 진행률은 **시작 유물 수에서 끌어온다.**
+   *
+   * `6/12` 로 적어뒀더니 시작 유물을 여덟으로 늘린 순간 깨졌다 — 도감이 잘못된 게
+   * 아니라 테스트가 낡은 것이었다. 여기서 지킬 것은 **화면이 실제 수를 말하는가**이지
+   * 그 수가 몇인가가 아니다. 몇이어야 하는지는 `content.test.ts` 가 따로 지킨다.
+   */
+  await expect(page.locator('body')).toHaveAttribute(
+    'data-codex-progress',
+    `${STARTING_RELICS.length}/${TOTAL_RELICS}`,
+  );
+  // 다 아는 채로 시작하면 도감이 채울 것이 없다 — 아래의 "가려짐" 검사가 무의미해진다.
+  expect(STARTING_RELICS.length, '시작부터 모든 유물을 지니고 있다').toBeLessThan(TOTAL_RELICS);
   await expect(page.locator('body')).toHaveAttribute('data-codex-hidden', 'no');
   await page.screenshot({ path: `${SHOT_DIR}/codex.png` });
 
