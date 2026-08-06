@@ -31,6 +31,7 @@ import { TOTAL_SLOTS } from '../../src/data/party.js';
 import { AREA_MOBS, MOB_KINDS, mobProfile } from '../../src/data/encounters.js';
 import { BOSSES_BY_MAP } from '../../src/data/bosses.js';
 import { encountersAt, validateZones, zoneAt } from '../../src/core/world/zone.js';
+import { canApproach, reachableFrom } from '../../src/core/world/reach.js';
 import { MAP_FILES, MAP_IDS, MAP_NAMES, STARTING_MAP, type MapId } from '../../src/data/maps.js';
 
 /**
@@ -109,6 +110,54 @@ describe('구역 배치', () => {
     }
 
     expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  /**
+   * 사람이 길을 막지 않는가 (T-054).
+   *
+   * **NPC 와 시설은 벽처럼 걸음을 막는다.** 좁은 자리에 세우면 그 너머가 통째로 끊기는데,
+   * 화면에서는 "왜 안 가지" 로만 보인다.
+   *
+   * ⚠️ **이 검사가 잡는 것은 "닿을 수 없다" 이지 "돌아가야 한다" 가 아니다.**
+   * 거점 입구 줄에 사람을 세웠을 때 스모크가 막혔지만 이 검사는 통과했다 — 거점이 넓어
+   * 우회로가 있었기 때문이다. 넓은 방에서는 한 사람이 불편하게 할 뿐 끊지는 못한다.
+   * 끊기는 것은 좁은 복도와 계단이고, 그게 이 검사의 몫이다 (`tests/unit/reach.test.ts`).
+   */
+  it.each([...MAP_IDS])('%s: 사람이 길을 막지 않는다 (T-054)', (id) => {
+    const map = mapOf(id);
+    const npcs = NPCS_BY_MAP[id] ?? [];
+    const facilities = facilitiesForMap(id);
+    const bosses = BOSSES_BY_MAP[id] ?? [];
+    const blockers = [...npcs, ...facilities, ...bosses].map((entry) => entry.position);
+
+    const reachable = reachableFrom(map, spawnWalker(map).position, blockers);
+    const problems: string[] = [];
+
+    // 말을 거는 것들은 **옆에** 설 수 있으면 된다.
+    for (const entry of [...npcs, ...facilities, ...bosses]) {
+      if (!canApproach(reachable, entry.position)) {
+        problems.push(`${entry.id} 에게 다가갈 수 없다 (${entry.position.x}, ${entry.position.y})`);
+      }
+    }
+
+    // 밟는 것들은 그 칸에 닿아야 한다.
+    for (const portal of PORTALS_BY_MAP[id] ?? []) {
+      if (!reachable.has(`${portal.position.x},${portal.position.y}`)) {
+        problems.push(`${portal.id} 에 닿을 수 없다`);
+      }
+    }
+    for (const site of sitesForMap(id)) {
+      if (!reachable.has(`${site.position.x},${site.position.y}`)) {
+        problems.push(`${site.id} 에 닿을 수 없다`);
+      }
+    }
+
+    expect(problems, problems.join('\n')).toEqual([]);
+  });
+
+  it('거점에 사람이 산다 (T-054)', () => {
+    // **거점은 돌아올 곳이다.** 시설만 있고 사람이 없으면 창고이지 거점이 아니다.
+    expect((NPCS_BY_MAP['haven'] ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
   it('시작 맵에 안전지대가 있다', () => {
