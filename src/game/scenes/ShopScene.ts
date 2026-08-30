@@ -7,6 +7,7 @@ import { markScene, markShop } from '../domState.js';
 import { SHOP_KEYS, hintLine } from '../../data/keys.js';
 import { scrollWindow } from '../../core/ui/scroll.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -116,6 +117,7 @@ export class ShopScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
     this.keys = bindSceneKeys(keyboard, SHOP_KEYS);
+    getTouchControls().setKeys(SHOP_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {

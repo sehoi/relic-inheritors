@@ -4,6 +4,7 @@ import { coinCount, partyProgress } from '../partyStore.js';
 import { elapsedMs, formatPlaytime } from '../playtime.js';
 import { markMenu, markScene } from '../domState.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 import type { SavedLocation } from '../../core/save/index.js';
 import type { SceneKey } from '../domState.js';
@@ -142,6 +143,7 @@ export class MenuScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
     this.keys = bindSceneKeys(keyboard, MENU_KEYS);
+    getTouchControls().setKeys(MENU_KEYS);
   }
 
   private pressed(name: string): boolean {

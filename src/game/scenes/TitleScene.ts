@@ -4,6 +4,8 @@ import { joinMember, resetParty } from '../partyStore.js';
 import { joinFullPartyIfRequested } from '../devFlags.js';
 import { resetClock, startClock, stopClock } from '../playtime.js';
 import { browserStorage, readAllSlots } from '../save/storage.js';
+import { TITLE_KEYS } from '../../data/keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { SaveEntry } from './SaveScene.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
@@ -61,6 +63,7 @@ export class TitleScene extends Phaser.Scene {
 
     // 이어할 세이브가 있을 때만 안내한다. 없는데 띄우면 눌러보고 빈 화면을 만난다.
     const resumable = readAllSlots(browserStorage()).some((slot) => slot.kind === 'ok');
+    getTouchControls().setKeys(resumable ? TITLE_KEYS : { start: TITLE_KEYS.start });
     if (resumable) {
       this.add
         .text(width / 2, height - 44, 'C — 이어하기', {

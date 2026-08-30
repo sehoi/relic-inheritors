@@ -7,6 +7,7 @@ import { ATTUNEMENT, RELICS } from '../../data/relics.js';
 import { getAttunement, ownedRelics } from '../partyStore.js';
 import { markCodex, markScene } from '../domState.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -147,6 +148,7 @@ export class CodexScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
     this.keys = bindSceneKeys(keyboard, CODEX_KEYS);
+    getTouchControls().setKeys(CODEX_KEYS);
   }
 
   private pressed(name: string): boolean {

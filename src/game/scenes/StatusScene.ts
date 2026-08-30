@@ -9,6 +9,7 @@ import { relic } from '../../data/relics.js';
 import { getLoadout, partyForBattle, partyMembers, partyProgress } from '../partyStore.js';
 import { markScene, markStatus } from '../domState.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -132,6 +133,7 @@ export class StatusScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
     this.keys = bindSceneKeys(keyboard, STATUS_KEYS);
+    getTouchControls().setKeys(STATUS_KEYS);
   }
 
   private pressed(name: string): boolean {

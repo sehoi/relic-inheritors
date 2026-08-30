@@ -18,6 +18,7 @@ import {
 import { markSaveScreen, markScene } from '../domState.js';
 import { SAVE_KEYS, hintLine } from '../../data/keys.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -126,6 +127,7 @@ export class SaveScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     if (keyboard === null) return;
     this.keys = bindSceneKeys(keyboard, SAVE_KEYS);
+    getTouchControls().setKeys(SAVE_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {

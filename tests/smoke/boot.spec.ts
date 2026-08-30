@@ -919,6 +919,14 @@ test('성소의 보스와 싸워 유물을 얻는다', async ({ page }) => {
  * 새로 시작 을 하면 **죽은 자리에서 다시 시작했다.** 파티는 새것인데 위치만 지난 회차였다.
  */
 test('전멸한 뒤 새로 시작하면 시작 지점이다', async ({ page }) => {
+  /**
+   * 이 테스트는 전멸할 때까지 최대 400라운드를 돈다 — 실제 RNG로 플레이하므로
+   * 몇 판 만에 지는지가 매번 다르다. 라운드마다 최소 220ms(`stepKey`)가 드니
+   * 최악의 경우 기본 45초 한도를 이미 넘을 수 있다 — CI 러너 부하와 무관하게
+   * 애초에 여유가 부족했다.
+   */
+  test.setTimeout(120_000);
+
   const errors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(`[console] ${msg.text()}`);
