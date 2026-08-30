@@ -6,7 +6,7 @@
   "description": "2D turn-based JRPG where power comes from relics, not characters.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-assets.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
