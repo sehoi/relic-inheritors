@@ -4,6 +4,7 @@ import { npcsForMap, type Npc } from '../../data/npcs.js';
 import { portalsForMap } from '../../data/portals.js';
 import { zonesForMap } from '../../data/zones.js';
 import { OVERWORLD_KEYS, type KeyBinding } from '../../data/keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import { CHARACTER_SHEET, PLAYER_PORTRAIT } from '../../data/characters.js';
 import { MAP_NAMES, STARTING_MAP, isMapId, type MapId } from '../../data/maps.js';
 import type { TileMap } from '../../core/world/tilemap.js';
@@ -698,6 +699,8 @@ export class OverworldScene extends Phaser.Scene {
     this.helpKeys = bind(OVERWORLD_KEYS.help);
     this.codexKeys = bind(OVERWORLD_KEYS.codex);
     this.menuKeys = bind(OVERWORLD_KEYS.menu);
+
+    getTouchControls().setKeys(OVERWORLD_KEYS);
   }
 
   /**

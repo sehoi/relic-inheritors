@@ -24,6 +24,7 @@ import { markRelicScreen, markScene } from '../domState.js';
 import { RELIC_KEYS, hintLine } from '../../data/keys.js';
 import { windowedLines, type ScrollWindow } from '../../core/ui/scroll.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import type { OverworldEntry } from './OverworldScene.js';
 
 /**
@@ -241,6 +242,7 @@ export class RelicScene extends Phaser.Scene {
     if (keyboard === null) return;
 
     this.keys = bindSceneKeys(keyboard, RELIC_KEYS);
+    getTouchControls().setKeys(RELIC_KEYS);
   }
 
   private pressed(...names: readonly string[]): boolean {

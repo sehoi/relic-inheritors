@@ -38,6 +38,7 @@ import { COIN_REWARD, EXP_REWARD } from '../../data/progression.js';
 import { Gauge } from '../ui/Gauge.js';
 import { BATTLE_KEYS } from '../../data/keys.js';
 import { bindSceneKeys, type BoundKeys } from '../keys.js';
+import { getTouchControls } from '../ui/TouchControls.js';
 import { ChoiceBox } from '../ui/ChoiceBox.js';
 import { browserStorage, readAllSlots } from '../save/storage.js';
 import type { SaveEntry } from './SaveScene.js';
@@ -599,6 +600,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     this.keys = bindSceneKeys(keyboard, BATTLE_KEYS);
+    getTouchControls().setKeys(BATTLE_KEYS);
   }
 
   private pressed(name: string): boolean {

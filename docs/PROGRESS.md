@@ -14,6 +14,18 @@
 
 ---
 
+### 2026-08-30 · 터치 조작 · 데스크톱 전제였던 게임에 화면마다 가상 버튼을 얹었다
+- 한 일: `game/ui/TouchControls.ts` 신규. `data/keys.ts`의 `SceneKeys`를 그대로 읽어 D-패드 + 원형 주 버튼 + 보조 버튼 줄을 그린다. 9개 씬 전부에 `getTouchControls().setKeys(...)` 한 줄씩 연결
+- 알게 된 것:
+  - **배포된 빌드가 모바일에서 검은 화면이 아니라 "탭할 게 없는" 화면이었다.** 실사용자가 진단용 아티팩트에서 타이틀은 뜨는데 `PRESS ENTER`를 누를 키보드가 없다고 짚어줬다 — 이 프로젝트는 GDD·아키텍처 어디에도 터치 언급이 없이 처음부터 키보드 전제로 설계돼 있었다.
+  - **`Image.src`를 가로채는 접근은 틀린 계층이었다.** 처음엔 가상 버튼이 `HTMLImageElement.prototype.src`를 흉내내려 했는데(에셋 임베드 실험에서 썼던 기법을 재활용하려다), Phaser의 `ImageFile`은 기본적으로 `XMLHttpRequest`로 먼저 받아 Blob으로 바꾼 뒤에야 `Image`에 얹는다 — 이건 애초에 버튼과 무관한 별개 실험(모바일 진단용 아티팩트)에서 배운 것이었다.
+  - **버튼과 씬 코드 사이를 진짜 `KeyboardEvent`로 이었다.** Phaser의 `KeyboardPlugin`이 `event.key`/`.code`가 아니라 `event.keyCode`(레거시 숫자)만 보고 `keydown-X` 이벤트와 `Key.isDown`을 판정한다는 것을 소스에서 확인했다 — `KeyboardEvent` 생성자는 `keyCode`를 못 받게 막아놔서 `Object.defineProperty`로 강제로 얹어야 했다. 이 덕분에 **씬 쪽 입력 코드는 한 줄도 안 바꿨다** — 물리 키보드와 가상 버튼이 완전히 같은 경로를 탄다.
+  - **배치 데이터가 하나의 출처라는 게 여기서도 값을 했다.** `KeyGuide`(도움말)와 같은 이유로 버튼도 `data/keys.ts`를 그대로 읽게 만들어서, 새 화면이나 새 단축키가 생겨도 터치 버튼을 따로 안 그려도 된다.
+  - **Playwright `.tap()`은 순간적이라 이동 검증에 못 썼다.** 방향키는 눌려 있는 동안(`isDown`) 계속 걷는 구조라, `pointerdown` → 대기 → `pointerup`을 직접 `dispatchEvent`로 흉내내야 카메라가 실제로 움직이는 것까지 확인할 수 있었다.
+- 다음에 걸릴 것 같은 것:
+  - 이 확인은 로컬 Playwright 실험이었지, `tests/smoke/`에 편입된 자동 회귀가 아니다. 터치 뷰포트로 D-패드/버튼을 누르는 스모크가 없으면 다음에 씬을 늘릴 때 조용히 깨질 수 있다
+  - 터치 버튼 레이아웃은 화면(타이틀·오버월드 등)마다 자동 생성이라 아직 사람 눈으로만 훑었다 — 전투처럼 요소가 빽빽한 화면에서 겹침이 있는지 스크린샷으로 한 번 더 봐야 한다
+
 ### 2026-08-30 · 배포 확인 · 프로덕션 빌드에서 에셋이 통째로 빠져 있었다
 - 한 일: GitHub Pages 배포 가능 여부를 확인하다가 `vite build` 산출물에 `assets/`(타일셋·스프라이트시트 295개 파일)가 아예 없는 것을 발견. `scripts/copy-assets.mjs`로 빌드 후 복사, `.github/workflows/deploy-pages.yml` 추가
 - 알게 된 것:
