@@ -35,6 +35,8 @@
 - [x] **T-011** 맵 간 이동 (입구/계단) + 플레이어 위치 복원 — `core/world/portal.ts`, 지하 1층 맵 추가, 왕복 검증
 - [ ] **유지보수: GitHub Actions 액션 버전 갱신**
   - `actions/checkout@v4`, `actions/setup-node@v4`, `actions/upload-artifact@v4` 가 Node 20 대상이라 폐기 예고 경고가 뜬다. 동작에는 지장 없으나 언젠가 깨진다. v5 계열로 올리고 CI 초록 확인
+- [ ] **유지보수: 스모크가 프로덕션 빌드를 보지 않는다**
+  - `npm run smoke`는 `npm run dev`(파일시스템 전체 서빙) 대상이라, `assets/`가 `dist/`에 안 들어가는 것 같은 빌드 전용 회귀를 못 잡는다 (2026-08-30 발견, `PROGRESS.md` 참조). `scripts/copy-assets.mjs`로 일단 고쳤지만, CI에 `vite build && vite preview` 대상 스모크(또는 최소한 dist 파일 존재 검증)를 추가하면 재발을 기계적으로 막을 수 있다
 - [ ] **에셋 필요: 계단 타일** ⬅ 사람이 처리
   - 포탈이 도형 표식으로 그려진다. Tiny Dungeon 에 계단 타일이 없어 보인다. 없어도 진행에는 지장 없다
 - [x] **T-012** 데이터 검증 커널 + 레지스트리 — `core/validation`(문제 수집·경로 접두사·읽기 도우미), `core/data/registry`(키↔id 일치, 교차 참조). Zod는 도입하지 않음 (ADR-008)
